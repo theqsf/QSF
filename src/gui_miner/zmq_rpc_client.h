@@ -7,6 +7,7 @@
 #include <QJsonArray>
 #include <memory>
 #include <string>
+#include "wallet/api/wallet2_api.h"
 
 // Forward declarations
 namespace zmq {
@@ -16,7 +17,7 @@ namespace zmq {
 
 namespace qsf {
 
-enum class NetworkType;
+// Use NetworkType from wallet API
 
 class ZmqRpcClient : public QObject
 {
@@ -28,7 +29,7 @@ public:
 
     // Connection management
     bool connect(const QString &address, uint16_t port);
-    bool connect(NetworkType networkType);
+    bool connect(qsf::NetworkType networkType);
     bool connectToAny(const QStringList &hosts, uint16_t port);
     bool connectUsingConfigured(const QStringList &zmqEndpoints, uint16_t defaultPort);
     bool connectUri(const QString &uri);
@@ -62,7 +63,7 @@ private:
     // Helper methods
     QJsonObject sendRequest(const QJsonObject &request);
     QString formatZmqAddress(const QString &address, uint16_t port);
-    uint16_t getZmqPort(NetworkType networkType);
+    uint16_t getZmqPort(qsf::NetworkType networkType);
 
     // DNS seed helpers
     QStringList resolveSeedLabelTxt(const QString &seedLabel);

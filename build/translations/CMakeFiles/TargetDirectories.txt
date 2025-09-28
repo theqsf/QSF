@@ -1,0 +1,3 @@
+/home/mb/QSF/build/translations/CMakeFiles/generate_translations_header.dir
+/home/mb/QSF/build/translations/CMakeFiles/edit_cache.dir
+/home/mb/QSF/build/translations/CMakeFiles/rebuild_cache.dir

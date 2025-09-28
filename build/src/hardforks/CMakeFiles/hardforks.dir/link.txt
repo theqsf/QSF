@@ -1,0 +1,2 @@
+ccache /usr/bin/ar qc libhardforks.a CMakeFiles/obj_hardforks.dir/hardforks.cpp.o
+ccache /usr/bin/ranlib libhardforks.a

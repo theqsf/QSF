@@ -11,13 +11,13 @@ namespace qsf {
 
 class MainWindow;
 
-class WalletManager : public QObject
+class GuiWalletManager : public QObject
 {
     Q_OBJECT
 
 public:
-    explicit WalletManager(QObject* parent = nullptr);
-    ~WalletManager();
+    explicit GuiWalletManager(QObject* parent = nullptr);
+    ~GuiWalletManager();
 
     // Wallet operations
     bool createWallet(const QString& password, const QString& walletPath);

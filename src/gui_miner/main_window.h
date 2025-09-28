@@ -37,6 +37,7 @@
 #include "mining_worker.h"
 #include "quantum_safe_widget.h"
 #include "zmq_rpc_client.h"
+#include "wallet/api/wallet2_api.h"
 
 QT_BEGIN_NAMESPACE
 class QLabel;
@@ -58,12 +59,8 @@ QT_END_NAMESPACE
 
 namespace qsf
 {
-  enum class NetworkType
-  {
-    MAINNET,
-    TESTNET,
-    STAGENET
-  };
+  // Use the NetworkType from wallet API
+  class GuiWalletManager;
 
   struct NetworkConfig
   {
@@ -199,8 +196,8 @@ namespace qsf
     
     // Network Configuration
     QComboBox* m_networkCombo;
-    NetworkType m_currentNetwork;
-    QMap<NetworkType, NetworkConfig> m_networkConfigs;
+    qsf::NetworkType m_currentNetwork;
+    QMap<qsf::NetworkType, NetworkConfig> m_networkConfigs;
     
     // Mining Configuration
     QComboBox* m_miningModeCombo;
@@ -249,7 +246,7 @@ namespace qsf
     bool m_zmqConnecting;
     
     // Wallet Manager (QSF GUI approach)
-    WalletManager* m_walletManager;
+    GuiWalletManager* m_walletManager;
     
     // Update Timer
     QTimer* m_updateTimer;

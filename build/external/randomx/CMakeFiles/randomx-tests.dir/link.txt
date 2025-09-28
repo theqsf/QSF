@@ -1,0 +1,1 @@
+ccache /usr/bin/c++ -O2 -march=native -pthread -march=native -DNDEBUG -Ofast CMakeFiles/randomx-tests.dir/src/tests/tests.cpp.o -o randomx-tests  librandomx.a 

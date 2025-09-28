@@ -87,6 +87,7 @@ function(quantumsafefoundation_crypto_generate_header QSF_CRYPTO_LIBRARY HEADER_
     message(FATAL_ERROR "Library ${QSF_CRYPTO_LIBRARY} is not valid. Must be one of: ${ALL_LIBRARIES}")
   endif ()
   quantumsafefoundation_crypto_get_namespace(${QSF_CRYPTO_LIBRARY} QUANTUMSAFECOIN_CRYPTO_NAMESPACE)
+  set(qsf_CRYPTO_LIBRARY ${QSF_CRYPTO_LIBRARY})
   configure_file("${QUANTUMSAFECOIN_CRYPTO_DIR}/src/crypto.h.in" ${HEADER_FILE})
 endfunction (quantumsafefoundation_crypto_generate_header)
 

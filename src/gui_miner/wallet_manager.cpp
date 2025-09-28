@@ -11,15 +11,15 @@
 namespace qsf {
 
 // Internal holder for libwallet pointers and network
-struct WalletManager::LibwalletState {
+struct GuiWalletManager::LibwalletState {
     qsf::WalletManager* manager = nullptr;
     qsf::Wallet* wallet = nullptr;
     qsf::NetworkType net = qsf::MAINNET;
 };
 
-class WalletManager::LibwalletListener : public qsf::WalletListener {
+class GuiWalletManager::LibwalletListener : public qsf::WalletListener {
 public:
-    explicit LibwalletListener(WalletManager* owner) : m_owner(owner) {}
+    explicit LibwalletListener(GuiWalletManager* owner) : m_owner(owner) {}
     void moneySpent(const std::string &, uint64_t) override {}
     void moneyReceived(const std::string &, uint64_t) override {}
     void unconfirmedMoneyReceived(const std::string &, uint64_t) override {}
@@ -31,10 +31,10 @@ public:
         m_owner->updateCachedFieldsFromWallet(true);
     }
 private:
-    WalletManager* m_owner;
+    GuiWalletManager* m_owner;
 };
 
-WalletManager::WalletManager(QObject* parent)
+GuiWalletManager::GuiWalletManager(QObject* parent)
     : QObject(parent)
     , m_hasWallet(false)
     , m_refreshTimer(nullptr)
@@ -49,16 +49,16 @@ WalletManager::WalletManager(QObject* parent)
 {
     m_refreshTimer = new QTimer(this);
     m_refreshTimer->setSingleShot(false);
-    connect(m_refreshTimer, &QTimer::timeout, this, &WalletManager::onRefreshTimer);
+    connect(m_refreshTimer, &QTimer::timeout, this, &GuiWalletManager::onRefreshTimer);
     m_listener.reset(new LibwalletListener(this));
 }
 
-WalletManager::~WalletManager()
+GuiWalletManager::~GuiWalletManager()
 {
     closeWallet();
 }
 
-bool WalletManager::createWallet(const QString& password, const QString& walletPath)
+bool GuiWalletManager::createWallet(const QString& password, const QString& walletPath)
 {
     if (m_hasWallet) closeWallet();
     m_password = password;
@@ -91,7 +91,7 @@ bool WalletManager::createWallet(const QString& password, const QString& walletP
     return true;
 }
 
-bool WalletManager::openWallet(const QString& walletPath, const QString& password)
+bool GuiWalletManager::openWallet(const QString& walletPath, const QString& password)
 {
     if (m_hasWallet) closeWallet();
     if (!QFile::exists(walletPath)) {
@@ -129,7 +129,7 @@ bool WalletManager::openWallet(const QString& walletPath, const QString& passwor
     return true;
 }
 
-void WalletManager::closeWallet()
+void GuiWalletManager::closeWallet()
 {
     if (m_lib && m_lib->wallet && m_lib->manager) {
         m_lib->wallet->pauseRefresh();
@@ -143,14 +143,14 @@ void WalletManager::closeWallet()
     emit walletClosed();
 }
 
-void WalletManager::refreshBalance()
+void GuiWalletManager::refreshBalance()
 {
     if (!m_lib || !m_lib->wallet) return;
     m_isRefreshing = true;
     m_lib->wallet->refreshAsync();
 }
 
-void WalletManager::setAutoRefresh(bool enabled, int intervalMs)
+void GuiWalletManager::setAutoRefresh(bool enabled, int intervalMs)
 {
     m_autoRefresh = enabled;
     m_refreshInterval = intervalMs;
@@ -160,7 +160,7 @@ void WalletManager::setAutoRefresh(bool enabled, int intervalMs)
     else m_lib->wallet->pauseRefresh();
 }
 
-void WalletManager::setDaemonAddress(const QString& daemonAddress)
+void GuiWalletManager::setDaemonAddress(const QString& daemonAddress)
 {
     QString oldAddress = m_daemonAddress;
     m_daemonAddress = daemonAddress;
@@ -176,7 +176,7 @@ void WalletManager::setDaemonAddress(const QString& daemonAddress)
     }
 }
 
-void WalletManager::rescanBlockchainFromZero()
+void GuiWalletManager::rescanBlockchainFromZero()
 {
     if (!m_hasWallet || !m_lib || !m_lib->wallet) return;
     if (m_rescanCompletedOnce) { refreshBalance(); return; }
@@ -187,14 +187,14 @@ void WalletManager::rescanBlockchainFromZero()
     m_lib->wallet->rescanBlockchainAsync();
 }
 
-void WalletManager::forceRefreshOnDaemonAvailable()
+void GuiWalletManager::forceRefreshOnDaemonAvailable()
 {
     if (!m_hasWallet || !m_lib || !m_lib->wallet) return;
     if (m_rescanQueued) rescanBlockchainFromZero();
     else refreshBalance();
 }
 
-void WalletManager::onDaemonStatusChanged(bool daemonRunning)
+void GuiWalletManager::onDaemonStatusChanged(bool daemonRunning)
 {
     if (!daemonRunning) return;
     if (m_hasWallet) {
@@ -205,14 +205,14 @@ void WalletManager::onDaemonStatusChanged(bool daemonRunning)
 
 /* removed: process output/error handlers not used in libwallet mode */
 
-void WalletManager::onRefreshTimer()
+void GuiWalletManager::onRefreshTimer()
 {
     refreshBalance();
 }
 
 // removed: CLI-specific parseBalance and sendCommand
 
-void WalletManager::setWalletPath(const QString& walletPath)
+void GuiWalletManager::setWalletPath(const QString& walletPath)
 {
     m_walletPath = walletPath;
     if (!walletPath.isEmpty()) { m_hasWallet = true; }
@@ -220,7 +220,7 @@ void WalletManager::setWalletPath(const QString& walletPath)
 
 // removed: CLI-specific writePasswordFile helper
 
-void WalletManager::ensureWalletManager()
+void GuiWalletManager::ensureWalletManager()
 {
     if (!m_lib) m_lib.reset(new LibwalletState());
     if (!m_lib->manager) {
@@ -228,7 +228,7 @@ void WalletManager::ensureWalletManager()
     }
 }
 
-void WalletManager::updateCachedFieldsFromWallet(bool emitSignals)
+void GuiWalletManager::updateCachedFieldsFromWallet(bool emitSignals)
 {
     if (!m_lib || !m_lib->wallet) return;
     const QString addr = QString::fromStdString(m_lib->wallet->address());
@@ -258,7 +258,7 @@ void WalletManager::updateCachedFieldsFromWallet(bool emitSignals)
     }
 }
 
-QString WalletManager::displayAmount(uint64_t atomic) const
+QString GuiWalletManager::displayAmount(uint64_t atomic) const
 {
     // Use libwallet formatter
     return QString::fromStdString(qsf::Wallet::displayAmount(atomic));
@@ -268,7 +268,7 @@ QString WalletManager::displayAmount(uint64_t atomic) const
 
 namespace qsf {
 
-bool WalletManager::sendTransaction(const QString& toAddress, const QString& amountStr, QString* txidOut, QString* errorOut)
+bool GuiWalletManager::sendTransaction(const QString& toAddress, const QString& amountStr, QString* txidOut, QString* errorOut)
 {
     if (txidOut) txidOut->clear();
     if (errorOut) errorOut->clear();
@@ -331,7 +331,7 @@ bool WalletManager::sendTransaction(const QString& toAddress, const QString& amo
 
 namespace qsf {
 
-QString WalletManager::makeIntegratedAddress(const QString& paymentId) const
+QString GuiWalletManager::makeIntegratedAddress(const QString& paymentId) const
 {
     if (!m_lib || !m_lib->wallet) return QString();
     const std::string pid = paymentId.trimmed().toStdString();
@@ -339,7 +339,7 @@ QString WalletManager::makeIntegratedAddress(const QString& paymentId) const
     return QString::fromStdString(integrated);
 }
 
-QString WalletManager::makePaymentUri(const QString& address, const QString& paymentId, const QString& amountStr, const QString& description, QString* errorOut) const
+QString GuiWalletManager::makePaymentUri(const QString& address, const QString& paymentId, const QString& amountStr, const QString& description, QString* errorOut) const
 {
     if (errorOut) errorOut->clear();
     if (!m_lib || !m_lib->wallet) { if (errorOut) *errorOut = "No wallet loaded"; return QString(); }

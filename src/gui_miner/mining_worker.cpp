@@ -26,18 +26,18 @@ namespace qsf
 {
   namespace
   {
-    static QString rpcBaseUrl(NetworkType networkType = NetworkType::MAINNET)
+    static QString rpcBaseUrl(qsf::NetworkType networkType = qsf::MAINNET)
     {
       // Use localhost with correct RPC port based on network type
       uint16_t port;
       switch (networkType) {
-        case NetworkType::TESTNET:
+        case qsf::TESTNET:
           port = ::config::testnet::RPC_DEFAULT_PORT; // 28071
           break;
-        case NetworkType::STAGENET:
+        case qsf::STAGENET:
           port = ::config::stagenet::RPC_DEFAULT_PORT; // 38071
           break;
-        case NetworkType::MAINNET:
+        case qsf::MAINNET:
         default:
           port = ::config::RPC_DEFAULT_PORT; // 18071
           break;

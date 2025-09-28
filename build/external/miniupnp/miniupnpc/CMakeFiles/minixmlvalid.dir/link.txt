@@ -1,0 +1,1 @@
+ccache /usr/bin/cc -O2 -march=native -pthread -DNDEBUG -Ofast CMakeFiles/minixmlvalid.dir/src/minixmlvalid.c.o CMakeFiles/minixmlvalid.dir/src/minixml.c.o -o minixmlvalid 

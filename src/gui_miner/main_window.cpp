@@ -114,7 +114,7 @@ namespace qsf
     , m_peerCountTimer(nullptr)
     , m_configuredThreads(0)
     , m_configuredDaemonUrl("")
-    , m_currentNetwork(NetworkType::MAINNET)
+    , m_currentNetwork(qsf::MAINNET)
     , m_localRpcPort(38171)
     , m_localZmqPort(38172)
     , m_localP2pPort(38170)
@@ -123,7 +123,7 @@ namespace qsf
     , m_daemonSupportsMiningRpc(false)
     , m_daemonHealthTimer(nullptr)
     , m_daemonPath("")
-    , m_walletManager(new WalletManager(this))
+    , m_walletManager(new GuiWalletManager(this))
     , m_daemonRetryCount(0)
   {
     // Find daemon path
@@ -147,7 +147,7 @@ namespace qsf
     }
     
     // Generate local config path
-    if (m_currentNetwork == NetworkType::MAINNET) {
+    if (m_currentNetwork == qsf::MAINNET) {
       m_localConfigPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation/qsf.local.conf";
     } else {
       m_localConfigPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation/testnet/qsf.testnet.conf";
@@ -273,7 +273,7 @@ namespace qsf
                 m_miningLog->append("[INFO] ✅ Connected to local daemon ZMQ on retry");
               } else {
                 m_miningLog->append("[WARNING] Still failed to connect to local ZMQ, using remote endpoints");
-                m_zmqClient->connect(NetworkType::MAINNET);
+                m_zmqClient->connect(qsf::MAINNET);
               }
             }
           });
@@ -576,10 +576,10 @@ namespace qsf
     mainnet.p2pPort = 18070;
     mainnet.seedNodes = QStringList() 
       << "seeds.qsfchain.com:18070";     // Use DNS seeds only
-    m_networkConfigs[NetworkType::MAINNET] = mainnet;
+    m_networkConfigs[qsf::MAINNET] = mainnet;
 
     // Force mainnet only - removed testnet and stagenet configurations
-    m_currentNetwork = NetworkType::MAINNET;
+    m_currentNetwork = qsf::MAINNET;
   }
 
   void MainWindow::setupUI()
@@ -1146,16 +1146,16 @@ namespace qsf
     onMiningModeChanged(m_miningModeCombo->currentText());
     // Force mainnet network selection - disabled network switching
     m_networkCombo->setCurrentIndex(0);
-    m_currentNetwork = NetworkType::MAINNET;
+    m_currentNetwork = qsf::MAINNET;
     
     // Don't auto-check daemon status - let user control it manually
     // QTimer::singleShot(1000, this, &MainWindow::checkDaemonStatus);
     
     // Connect wallet manager signals
-    connect(m_walletManager, &WalletManager::walletOpened, this, &MainWindow::onWalletOpened);
-    connect(m_walletManager, &WalletManager::walletClosed, this, &MainWindow::onWalletClosed);
-    connect(m_walletManager, &WalletManager::balanceUpdated, this, &MainWindow::onBalanceUpdated);
-    connect(m_walletManager, &WalletManager::error, this, &MainWindow::onWalletError);
+    connect(m_walletManager, &GuiWalletManager::walletOpened, this, &MainWindow::onWalletOpened);
+    connect(m_walletManager, &GuiWalletManager::walletClosed, this, &MainWindow::onWalletClosed);
+    connect(m_walletManager, &GuiWalletManager::balanceUpdated, this, &MainWindow::onBalanceUpdated);
+    connect(m_walletManager, &GuiWalletManager::error, this, &MainWindow::onWalletError);
     // Interactive password prompts are disabled; password is handled programmatically for rescan commands
     
     // Enable auto-refresh for wallet balance (every 15 seconds)
@@ -1446,7 +1446,7 @@ namespace qsf
   {
     // Ask for wallet save path - Use proper QSF data directory structure
     QString defaultDir;
-    if (m_currentNetwork == NetworkType::MAINNET) {
+    if (m_currentNetwork == qsf::MAINNET) {
       defaultDir = QDir::homePath() + "/.quantumsafefoundation";
     } else {
       defaultDir = QDir::homePath() + "/.quantumsafefoundation/testnet/testnet/wallets";
@@ -1760,7 +1760,7 @@ namespace qsf
 
   void MainWindow::onNetworkChanged(int index)
   {
-    NetworkType newNetwork = static_cast<NetworkType>(index);
+    qsf::NetworkType newNetwork = static_cast<qsf::NetworkType>(index);
     if (newNetwork == m_currentNetwork)
       return;
 
@@ -2838,7 +2838,7 @@ namespace qsf
           m_miningLog->append("[INFO] ✅ ZMQ connected to local daemon");
         } else {
           m_miningLog->append("[WARNING] Failed to connect to local ZMQ, trying network endpoints...");
-          connected = m_zmqClient->connect(NetworkType::MAINNET);
+          connected = m_zmqClient->connect(qsf::MAINNET);
           if (!connected) {
             m_miningLog->append("[WARNING] Failed to connect to any ZMQ endpoint, using HTTP fallback");
           }

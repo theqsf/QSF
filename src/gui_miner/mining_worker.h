@@ -37,10 +37,11 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "wallet/api/wallet2_api.h"
 
 // Forward declarations
 namespace qsf {
-  enum class NetworkType;
+  // Use NetworkType from wallet API
   class ZmqRpcClient;
 }
 
@@ -62,7 +63,7 @@ namespace qsf
   {
     MiningMode mode;
     MiningAlgorithm algorithm;
-    NetworkType networkType;  // Add network type
+    qsf::NetworkType networkType;  // Add network type
     std::string poolAddress;
     std::string daemonUrl;
     std::string walletAddress;

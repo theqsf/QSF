@@ -1,0 +1,1 @@
+ccache /usr/bin/cc -O2 -march=native -pthread -DNDEBUG -Ofast CMakeFiles/testminixml.dir/src/testminixml.c.o CMakeFiles/testminixml.dir/src/minixml.c.o CMakeFiles/testminixml.dir/src/igd_desc_parse.c.o -o testminixml 

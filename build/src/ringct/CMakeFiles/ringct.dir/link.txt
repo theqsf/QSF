@@ -1,0 +1,2 @@
+ccache /usr/bin/ar qc libringct.a CMakeFiles/obj_ringct.dir/rctSigs.cpp.o
+ccache /usr/bin/ranlib libringct.a

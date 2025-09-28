@@ -1,0 +1,2 @@
+ccache /usr/bin/ar qc libdevice_trezor.a CMakeFiles/obj_device_trezor.dir/device_trezor.cpp.o
+ccache /usr/bin/ranlib libdevice_trezor.a

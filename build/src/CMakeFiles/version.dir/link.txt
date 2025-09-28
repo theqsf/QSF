@@ -1,0 +1,2 @@
+ccache /usr/bin/ar qc libversion.a CMakeFiles/obj_version.dir/__/version.cpp.o
+ccache /usr/bin/ranlib libversion.a

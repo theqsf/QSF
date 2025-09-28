@@ -1,0 +1,1 @@
+ccache /usr/bin/cc -O2 -march=native -pthread -DNDEBUG -Ofast CMakeFiles/upnpc-static.dir/src/upnpc.c.o -o upnpc-static  libminiupnpc.a 

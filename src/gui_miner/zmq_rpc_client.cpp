@@ -89,7 +89,7 @@ bool ZmqRpcClient::connect(const QString &address, uint16_t port)
     }
 }
 
-bool ZmqRpcClient::connect(NetworkType networkType)
+bool ZmqRpcClient::connect(qsf::NetworkType networkType)
 {
     uint16_t port = getZmqPort(networkType);
     // Prefer DNS seed list by default; allow override via env vars
@@ -106,13 +106,13 @@ bool ZmqRpcClient::connect(NetworkType networkType)
 
     QStringList hosts;
     switch (networkType) {
-        case NetworkType::TESTNET:
+        case qsf::TESTNET:
             hosts << "seeds.qsfnetwork.com";
             break;
-        case NetworkType::STAGENET:
+        case qsf::STAGENET:
             hosts << "seeds.qsfcoin.network";
             break;
-        case NetworkType::MAINNET:
+        case qsf::MAINNET:
         default:
             hosts << "seeds.qsfchain.com"
                   << "seed2.qsfchain.com"
@@ -273,14 +273,14 @@ QString ZmqRpcClient::formatZmqAddress(const QString &address, uint16_t port)
     return QString("tcp://%1:%2").arg(address).arg(port);
 }
 
-uint16_t ZmqRpcClient::getZmqPort(NetworkType networkType)
+uint16_t ZmqRpcClient::getZmqPort(qsf::NetworkType networkType)
 {
     switch (networkType) {
-        case NetworkType::TESTNET:
+        case qsf::TESTNET:
             return ::config::testnet::ZMQ_RPC_DEFAULT_PORT; // 28072
-        case NetworkType::STAGENET:
+        case qsf::STAGENET:
             return ::config::stagenet::ZMQ_RPC_DEFAULT_PORT; // 38072
-        case NetworkType::MAINNET:
+        case qsf::MAINNET:
         default:
             return ::config::ZMQ_RPC_DEFAULT_PORT; // 18072
     }
