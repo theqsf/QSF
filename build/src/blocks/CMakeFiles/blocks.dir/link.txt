@@ -1,2 +1,0 @@
-ccache /usr/bin/ar qc libblocks.a CMakeFiles/obj_blocks.dir/blocks.cpp.o CMakeFiles/obj_blocks.dir/generated_checkpoints.c.o CMakeFiles/obj_blocks.dir/generated_testnet_blocks.c.o CMakeFiles/obj_blocks.dir/generated_stagenet_blocks.c.o
-ccache /usr/bin/ranlib libblocks.a

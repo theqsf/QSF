@@ -1,2 +1,0 @@
-/home/mb/QSF/build/src/crypto/wallet/CMakeFiles/CheckASM-ATT/CMakeFiles/edit_cache.dir
-/home/mb/QSF/build/src/crypto/wallet/CMakeFiles/CheckASM-ATT/CMakeFiles/rebuild_cache.dir

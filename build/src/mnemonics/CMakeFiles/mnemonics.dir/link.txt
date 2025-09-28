@@ -1,2 +1,0 @@
-ccache /usr/bin/ar qc libmnemonics.a CMakeFiles/obj_mnemonics.dir/electrum-words.cpp.o
-ccache /usr/bin/ranlib libmnemonics.a

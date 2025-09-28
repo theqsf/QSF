@@ -1,1 +1,0 @@
-ccache /usr/bin/c++ -O2 -march=native -pthread -march=native -DNDEBUG -Ofast CMakeFiles/randomx-benchmark.dir/src/tests/benchmark.cpp.o CMakeFiles/randomx-benchmark.dir/src/tests/affinity.cpp.o -o randomx-benchmark  librandomx.a 

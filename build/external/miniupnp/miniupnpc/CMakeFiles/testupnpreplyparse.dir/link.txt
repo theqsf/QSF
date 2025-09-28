@@ -1,1 +1,0 @@
-ccache /usr/bin/cc -O2 -march=native -pthread -DNDEBUG -Ofast CMakeFiles/testupnpreplyparse.dir/src/testupnpreplyparse.c.o CMakeFiles/testupnpreplyparse.dir/src/minixml.c.o CMakeFiles/testupnpreplyparse.dir/src/upnpreplyparse.c.o -o testupnpreplyparse 

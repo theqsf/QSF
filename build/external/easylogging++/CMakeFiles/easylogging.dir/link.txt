@@ -1,2 +1,0 @@
-ccache /usr/bin/ar qc libeasylogging.a CMakeFiles/easylogging.dir/easylogging++.cc.o
-ccache /usr/bin/ranlib libeasylogging.a
