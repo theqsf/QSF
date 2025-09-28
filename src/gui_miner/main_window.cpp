@@ -622,7 +622,10 @@ namespace qsf
     QStringList logoPaths = {
         ":/icons/qsf_icon.png",
         QCoreApplication::applicationDirPath() + "/../src/gui_miner/icons/qsf_icon.png",
+        QCoreApplication::applicationDirPath() + "/../../src/gui_miner/icons/qsf_icon.png",
+        QDir::homePath() + "/QSF/src/gui_miner/icons/qsf_icon.png",
         QDir::homePath() + "/quantumsafefoundation/src/gui_miner/icons/qsf_icon.png",
+        "/home/mb/QSF/src/gui_miner/icons/qsf_icon.png",
         "qsf_icon.png"
     };
     
