@@ -4137,13 +4137,7 @@ bool simple_wallet::ask_wallet_create_if_needed()
       {
         // If the user provided a bare name (no directory separators), place it under the
         // per-network default wallets directory inside the user's data dir to avoid CWD usage.
-        if (wallet_path.find('/') == std::string::npos && wallet_path.find('\\') == std::string::npos)
-        {
-          boost::filesystem::path base = tools::get_default_data_dir();
-          base /= "wallets";
-          boost::filesystem::create_directories(base);
-          wallet_path = (base / wallet_path).string();
-        }
+        // Keep user-provided path as-is here; we'll resolve default directories later once nettype is known
 
         tools::wallet2::wallet_exists(wallet_path, keys_file_exists, wallet_file_exists);
         LOG_PRINT_L3("wallet_path: " << wallet_path << "");
@@ -4291,6 +4285,36 @@ bool simple_wallet::init(const boost::program_options::variables_map& vm)
   else if (m_generate_new.empty() && m_wallet_file.empty() && m_generate_from_device.empty() && m_generate_from_view_key.empty() && m_generate_from_spend_key.empty() && m_generate_from_keys.empty() && m_generate_from_multisig_keys.empty() && m_generate_from_json.empty())
   {
     if(!ask_wallet_create_if_needed()) return false;
+  }
+
+  // Normalize wallet target paths for bare filenames to per-network data dir
+  {
+    boost::filesystem::path base = tools::get_default_data_dir();
+    if (nettype == TESTNET)
+      base /= "testnet";
+    else if (nettype == STAGENET)
+      base /= "stagenet";
+    base /= "wallets";
+    boost::filesystem::create_directories(base);
+
+    auto needs_prefix = [](const std::string &p) -> bool {
+      return !p.empty() && p.find('/') == std::string::npos && p.find('\\') == std::string::npos;
+    };
+
+    if (needs_prefix(m_wallet_file))
+      m_wallet_file = (base / m_wallet_file).string();
+    if (needs_prefix(m_generate_new))
+      m_generate_new = (base / m_generate_new).string();
+    if (needs_prefix(m_generate_from_device))
+      m_generate_from_device = (base / m_generate_from_device).string();
+    if (needs_prefix(m_generate_from_view_key))
+      m_generate_from_view_key = (base / m_generate_from_view_key).string();
+    if (needs_prefix(m_generate_from_spend_key))
+      m_generate_from_spend_key = (base / m_generate_from_spend_key).string();
+    if (needs_prefix(m_generate_from_keys))
+      m_generate_from_keys = (base / m_generate_from_keys).string();
+    if (needs_prefix(m_generate_from_multisig_keys))
+      m_generate_from_multisig_keys = (base / m_generate_from_multisig_keys).string();
   }
 
   bool enable_multisig = false;
