@@ -1447,13 +1447,15 @@ namespace qsf
 
   void MainWindow::onGenerateWallet()
   {
-    // Ask for wallet save path - Use proper QSF data directory structure
-    QString defaultDir;
-    if (m_currentNetwork == qsf::MAINNET) {
-      defaultDir = QDir::homePath() + "/.quantumsafefoundation";
-    } else {
-      defaultDir = QDir::homePath() + "/.quantumsafefoundation/testnet/testnet/wallets";
-    }
+  // Ask for wallet save path - Use proper QSF data directory structure
+  QString defaultDir;
+  if (m_currentNetwork == qsf::MAINNET) {
+    defaultDir = QDir::homePath() + "/.quantumsafefoundation/wallets";
+  } else if (m_currentNetwork == qsf::TESTNET) {
+    defaultDir = QDir::homePath() + "/.quantumsafefoundation/testnet/wallets";
+  } else { // STAGENET
+    defaultDir = QDir::homePath() + "/.quantumsafefoundation/stagenet/wallets";
+  }
     QDir().mkpath(defaultDir);
     QString walletPath = QFileDialog::getSaveFileName(this, "Create Wallet File", defaultDir + "/qsf-wallet", "Wallet Files (*)");
     if (walletPath.isEmpty()) return;
@@ -1470,9 +1472,9 @@ namespace qsf
       return;
     }
 
-    // Create wallet via libwallet - Force mainnet only
+  // Create wallet via libwallet using the currently selected network
     auto mgr = qsf::WalletManagerFactory::getWalletManager();
-    qsf::NetworkType net = qsf::MAINNET;  // Force mainnet
+  qsf::NetworkType net = m_currentNetwork;
     qsf::Wallet* w = mgr->createWallet(walletPath.toStdString(), password.toStdString(), std::string("English"), net);
     if (!w)
     {
