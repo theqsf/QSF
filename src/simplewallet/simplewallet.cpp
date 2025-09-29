@@ -4139,17 +4139,8 @@ bool simple_wallet::ask_wallet_create_if_needed()
         // per-network default wallets directory inside the user's data dir to avoid CWD usage.
         if (wallet_path.find('/') == std::string::npos && wallet_path.find('\\') == std::string::npos)
         {
-          const bool testnet = tools::wallet2::has_testnet_option(m_vm);
-          const bool stagenet = tools::wallet2::has_stagenet_option(m_vm);
-          const network_type nettype = testnet ? TESTNET : stagenet ? STAGENET : MAINNET;
-
           boost::filesystem::path base = tools::get_default_data_dir();
-          if (nettype == TESTNET)
-            base /= "testnet";
-          else if (nettype == STAGENET)
-            base /= "stagenet";
           base /= "wallets";
-
           boost::filesystem::create_directories(base);
           wallet_path = (base / wallet_path).string();
         }
