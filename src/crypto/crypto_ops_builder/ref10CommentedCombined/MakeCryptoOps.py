@@ -120,10 +120,10 @@ ge_comments = textwrap.dedent("""\
     */
     """)
 
-xmr_comments = textwrap.dedent("""\
+qsf_comments = textwrap.dedent("""\
     /*
      *
-     * xmr specific code
+     * qsf specific code
      *
      *
     This code is from the original CryptoNote.
@@ -171,7 +171,7 @@ if a == "m":
         os.system("cp "+g+" "+g.replace("fe", "fe.qsf."))
     qhasmToC("fe_pow22523.c", "pow22523.h", "fe.qsf._pow22523.c")
     qhasmToC("fe_invert.c", "pow225521.h", "fe.qsf._invert.c")
-    os.system("rm fe.qsf._isnonzero.c") #since it's modified, it's in xmrSpecificOld
+    os.system("rm fe.qsf._isnonzero.c") #since it's modified, it's in qsfSpecificOld
     os.system("cat fe.qsf.*.c | grep -v '^#include' > fe.qsf.c")
 
     #sc things
@@ -223,9 +223,9 @@ if a == "m":
             text_file.write(ge_comments)
     with open("sc.qsf.comments", "w") as text_file:
             text_file.write(sc_comments)
-    with open("xmr.qsf.comments", "w") as text_file:
-            text_file.write(xmr_comments)
-    with open("xmr.qsf.predeclarations", "w") as text_file:
+    with open("qsf.qsf.comments", "w") as text_file:
+            text_file.write(qsf_comments)
+    with open("qsf.qsf.predeclarations", "w") as text_file:
             text_file.write(predeclarations)
 
 
@@ -238,7 +238,7 @@ if a == "m":
         text_file.write(crypto_ops_includes)
 
     #note you may have duplicates of load_3, load_4 and possibly some other functions ... 
-    os.system("cat qsf.license crypto-ops.qsf.includes xmr.qsf.predeclarations fe.qsf.comments fe.qsf.c sc.qsf.comments sc.qsf.c ge.qsf.comments ge.qsf.c xmr.qsf.comments xmrSpecificOld.c > crypto-ops.c")
+    os.system("cat qsf.license crypto-ops.qsf.includes qsf.qsf.predeclarations fe.qsf.comments fe.qsf.c sc.qsf.comments sc.qsf.c ge.qsf.comments ge.qsf.c qsf.qsf.comments qsfSpecificOld.c > crypto-ops.c")
 
     #qsf specific header files
     #print("making crypto-ops-tmp.h")

@@ -1,4 +1,4 @@
-# 🔒 QSF Quantum-Safe Coin
+# 🔒 QSF Quantum-Safe Foundation
 
 <div align="center">
   <img src="src/gui_miner/icons/qsf_icon.png" alt="QSF Logo" width="120" height="120">
@@ -14,9 +14,9 @@
 
 ---
 
-## 🌟 **What is QSF Quantum-Safe Coin?**
+## 🌟 **What is the QSF Quantum-Safe Foundation?**
 
-QSF (Quantum-Safe Future) is a **revolutionary cryptocurrency** that combines the power of **RandomX proof-of-work mining** with **DUAL quantum-resistant signature schemes** to create the **most secure and future-proof digital currency** in existence.
+QSF (Quantum-Safe Foundation) is a **revolutionary cryptocurrency** that combines the power of **RandomX proof-of-work mining** with **DUAL quantum-resistant signature schemes** to create the **most secure and future-proof digital currency** in existence.
 
 ### 🔐 **DUAL Quantum-Resistant Security (MANDATORY)**
 - **XMSS (eXtended Merkle Signature Scheme)**: Stateful hash-based signatures
@@ -77,7 +77,7 @@ QSF (Quantum-Safe Future) is a **revolutionary cryptocurrency** that combines th
 ### **Quick Setup (Recommended)**
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/quantumsafefoundation.git
+git clone https://github.com/your-username/QSF.git
 cd quantumsafefoundation
 
 # 1) Install dependencies (GUI + daemon + wallet)
@@ -127,7 +127,7 @@ The build script automatically handles:
 ### **Manual Setup (Advanced)**
 ```bash
 # Clone with submodules
-git clone --recursive https://github.com/your-username/quantumsafefoundation.git
+git clone --recursive https://github.com/your-username/QSF.git
 cd quantumsafefoundation
 
 # Install dependencies manually (Ubuntu/Debian)
@@ -179,16 +179,7 @@ See [setup_dns.sh](setup_dns.sh) for DNS configuration instructions.
 
 ## 🎯 **Usage Guide**
 
-### **1. DUAL Quantum-Safe Key Generation (MANDATORY)**
-```bash
-# MANDATORY step before mining - NO EXCEPTIONS
-1. Open "Quantum-Safe" tab
-2. Generate BOTH XMSS and SPHINCS+ keys simultaneously
-3. Save dual keys securely
-4. Keys are automatically enforced for all transactions
-```
-
-### **2. Daemon Startup**
+### **1. Daemon Startup**
 ```bash
 # Start daemon (quantum-safe features are automatically enabled)
 ./build/bin/qsf --config-file=/path/to/qsf-mainnet.conf
@@ -199,7 +190,7 @@ See [setup_dns.sh](setup_dns.sh) for DNS configuration instructions.
 # Quantum-safe features are MANDATORY and always enabled
 ```
 
-### **3. Mining Configuration**
+### **2. Mining Configuration**
 ```bash
 # Public seed best-practice
 - Keep RPC restricted on 127.0.0.1:18071
@@ -338,13 +329,6 @@ sudo apt install qt5-default libqt5gui5
 make clean && make -j$(nproc)
 ```
 
-**Mining Stops Immediately**
-```bash
-# Check quantum-safe keys (MANDATORY)
-1. Go to "Quantum-Safe" tab
-2. Generate BOTH XMSS and SPHINCS+ keys
-3. Restart mining
-```
 
 **Network Connection Issues**
 ```bash
@@ -364,8 +348,8 @@ The easiest way to get started with QSF is using our automated build system:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/quantumsafefoundation.git
-cd quantumsafefoundation
+git clone https://github.com/your-username/QSF.git
+cd QSF
 
 # Initialize submodules and setup environment
 git submodule update --init --recursive
@@ -470,14 +454,14 @@ This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICE
 
 ## 📞 **Support & Community**
 
-- **GitHub Issues**: [Report bugs and feature requests](https://github.com/your-username/quantumsafefoundation/issues)
-- **Discussions**: [Community discussions](https://github.com/your-username/quantumsafefoundation/discussions)
+- **GitHub Issues**: [Report bugs and feature requests](https://github.com/your-username/QSF/issues)
+- **Discussions**: [Community discussions](https://github.com/your-username/QSF/discussions)
 - **Documentation**: [Complete documentation](docs/)
 
 ---
 
 <div align="center">
-  **🔒 QSF Quantum-Safe Coin - The Most Secure Cryptocurrency in Existence**
+  **🔒 QSF Quantum-Safe Foundation - The Most Secure Cryptocurrency in Existence**
   
   *Built with ❤️ for a quantum-resistant future with NO COMPROMISES*
   

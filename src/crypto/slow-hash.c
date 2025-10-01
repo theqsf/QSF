@@ -865,7 +865,7 @@ void cn_slow_hash_free_state(void)
  * AES support on x86 CPUs.
  *
  * A diagram of the inner loop of this function can be found at
- * https://www.cs.cmu.edu/~dga/crypto/xmr/cryptonight.png
+ * https://www.cs.cmu.edu/~dga/crypto/qsf/cryptonight.png
  *
  * @param data the data to hash
  * @param length the length in bytes of the data
