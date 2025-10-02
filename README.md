@@ -14,15 +14,17 @@
 
 ---
 
-## 🌟 **What is the QSF Quantum-Safe Foundation?**
+## 🌟 **Overview**
 
-QSF (Quantum-Safe Foundation) is a **revolutionary cryptocurrency** that combines the power of **RandomX proof-of-work mining** with **DUAL quantum-resistant signature schemes** to create the **most secure and future-proof digital currency** in existence.
+QSF (Quantum-Safe Foundation) is a **revolutionary cryptocurrency** that combines **RandomX proof-of-work mining** with **DUAL quantum-resistant signature schemes** to create the **most secure and future-proof digital currency** in existence.
+
+## 🚀 **Core Features**
 
 ### 🔐 **DUAL Quantum-Resistant Security (MANDATORY)**
 - **XMSS (eXtended Merkle Signature Scheme)**: Stateful hash-based signatures
-- **SPHINCS+**: Stateless hash-based signatures
+- **SPHINCS+**: Stateless hash-based signatures  
 - **DUAL ENFORCEMENT**: BOTH algorithms required simultaneously
-- **NO COMPROMISE**: Maximum quantum resistance with no choice to weaken security
+- **NO COMPROMISE**: Maximum quantum resistance with no option to weaken security
 
 ### ⚡ **RandomX Mining + Quantum-Safe Integration**
 - **CPU-optimized mining**: Fair distribution using RandomX algorithm
@@ -30,41 +32,18 @@ QSF (Quantum-Safe Foundation) is a **revolutionary cryptocurrency** that combine
 - **Quantum-Safe Integration**: RandomX PoW + quantum-safe signatures enforced
 - **Energy-efficient**: Optimized for consumer-grade hardware
 
-### 🛡️ **Complete 51% Attack Protection**
+### 🛡️ **Advanced 51% Attack Protection**
 - **Multi-layer defense**: Early detection at 40% (before 51%)
 - **Automatic response**: Immediate difficulty spike and network segmentation
 - **Self-healing**: Automatic recovery and network restoration
-- **Qubic-style attack resistance**: Complete protection against aggressive attacks
+- **Geographic distribution**: Prevents single-region attacks
 
----
-
-## 🚀 **Key Features**
-
-### **🔒 DUAL Quantum-Safe Transactions (MANDATORY)**
-- **BOTH XMSS AND SPHINCS+**: Required simultaneously for maximum security
-- **No Algorithm Choice**: Users cannot weaken security by choosing one algorithm
-- **Redundant Protection**: If one algorithm is compromised, the other still protects
-- **Future-Proof**: Multiple quantum-resistant approaches in parallel
-
-### **⚡ RandomX + Quantum-Safe Integration**
-- **CPU Mining**: Optimized for general-purpose processors
-- **ASIC Resistance**: Prevents mining centralization
-- **Quantum-Safe Validation**: All blocks require quantum-safe signatures
-- **Fair Distribution**: Equal opportunity for all miners
-
-### **🛡️ Advanced 51% Attack Protection**
-- **Rapid Attack Detection**: Catches attacks at 40% (before 51%)
-- **Gradual Attack Detection**: Catches stealth attacks at 35%
-- **Pool Collusion Detection**: Identifies suspicious pool combinations
-- **Geographic Distribution**: Prevents single-region attacks
-- **Automatic Recovery**: Self-healing network after attacks
-
-### **🌐 Multi-Network Support**
+### 🌐 **Multi-Network Support**
 - **Mainnet**: Production network with full quantum-safe enforcement
 - **Testnet**: Development and testing network
 - **Stagenet**: Staging environment for testing
 
-### **💻 Modern GUI Wallet**
+### 💻 **Modern GUI Wallet**
 - **Bitcoin-like Interface**: Familiar and intuitive design
 - **Real-time Mining**: Integrated mining with live statistics
 - **Quantum-Safe Tab**: Mandatory key generation and management
@@ -74,87 +53,43 @@ QSF (Quantum-Safe Foundation) is a **revolutionary cryptocurrency** that combine
 
 ## 📦 **Installation & Setup**
 
-### **Quick Setup (Recommended)**
+### **🚀 Quick Setup (Recommended)**
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/QSF.git
-cd quantumsafefoundation
+cd QSF
 
-# 1) Install dependencies (GUI + daemon + wallet)
-./setup_dependencies.sh --yes
-
-# 2) Build everything (Release)
-./build.sh --clean
-
-# 3) Copy example config and edit locally (do not commit your real config)
-cp qsf.conf.example qsf-mainnet.conf
-
-# 4) Start daemon (optional on this box)
-cd build/bin && ./qsf --config-file /path/to/qsf-mainnet.conf
-
-# 5) Start GUI miner
-cd build/bin && ./qsf-gui-miner
-```
-
-GUI miner connection (public seed best-practice):
-- Keep your server RPC on 127.0.0.1:18071 (restricted)
-- Expose ZMQ for miners on 0.0.0.0:18072 (and 18083 pub)
-- In the GUI, set mining endpoint to: `seeds.qsfchain.com:18072`
-
-### **Memory-Aware Configuration**
-The build process automatically detects your system's memory and creates optimized configurations:
-- **Low Memory (< 2GB)**: Reduced connections, smaller sync blocks, minimal logging
-- **Medium Memory (2-4GB)**: Balanced performance settings
-- **High Memory (> 4GB)**: Full performance optimization
-
-Use the smart launcher: `./start_qsf_daemon.sh`
-
-### **Server Deployment**
-For headless server deployments, simply run:
-
-```bash
-# After git pull on server, just run:
+# Initialize submodules and build everything
+git submodule update --init --recursive
 ./build.sh
 ```
 
 The build script automatically handles:
 - ✅ **Submodule initialization** (trezor-common, randomx, miniupnp, rapidjson)
-- ✅ **Build directory cleanup** (avoids CMake cache conflicts)
-- ✅ **Submodule integrity verification**
-- ✅ **Error detection and reporting**
-- ✅ **Complete build process**
+- ✅ **Qt Wayland dependencies** (required for GUI miner)
+- ✅ **Configuration files** (`~/.quantumsafefoundation/qsf.local.conf`)
+- ✅ **Complete build process** (daemon, GUI miner, wallet CLI)
 
-### **Manual Setup (Advanced)**
+### **🎯 Running QSF Components**
 ```bash
-# Clone with submodules
-git clone --recursive https://github.com/your-username/QSF.git
-cd quantumsafefoundation
+# Start the daemon (recommended)
+./start_qsf_daemon.sh
 
-# Install dependencies manually (Ubuntu/Debian)
-sudo apt update && sudo apt install \
-  build-essential cmake pkg-config libssl-dev libzmq3-dev libunbound-dev \
-  libsodium-dev libunwind8-dev liblzma-dev libreadline-dev libexpat1-dev \
-  libpgm-dev qtbase5-dev qtchooser qt5-qmake qtbase5-dev-tools \
-  libqt5svg5-dev qttools5-dev-tools libhidapi-dev libusb-1.0-0-dev \
-  libprotobuf-dev protobuf-compiler libudev-dev \
-  libboost-chrono-dev libboost-date-time-dev libboost-filesystem-dev \
-  libboost-locale-dev libboost-program-options-dev libboost-regex-dev \
-  libboost-serialization-dev libboost-system-dev libboost-thread-dev \
-  python3 ccache doxygen graphviz
-
-# Initialize submodules
-git submodule update --init --recursive --force
-
-# Build the project
-./build.sh --clean
+# Or run components directly
+cd build/bin
+./qsf                    # QSF daemon
+./qsf-gui-miner          # GUI miner
+./qsf-wallet-cli         # Wallet CLI
+./qsf-wallet-rpc         # Wallet RPC server
 ```
 
-### **Quick Start (MANDATORY Quantum-Safe Setup)**
+### **⚙️ Quick Start Guide**
 1. **Launch the GUI**: Run `./qsf-gui-miner` from `build/bin/`
 2. **Generate DUAL Quantum-Safe Keys**: Go to "Quantum-Safe" tab and generate BOTH XMSS and SPHINCS+ keys
 3. **Select Network**: Choose Mainnet, Testnet, or Stagenet
 4. **Create Wallet**: Generate a new wallet address
 5. **Start Mining**: Begin mining with RandomX + quantum-safe validation
+
 
 ---
 
@@ -200,7 +135,30 @@ See [setup_dns.sh](setup_dns.sh) for DNS configuration instructions.
 
 ---
 
-## 🔬 **Technical Specifications**
+## 🛡️ **Security & Privacy Features**
+
+### **DUAL Quantum Resistance (MANDATORY)**
+- **XMSS Signatures**: Stateful hash-based signatures resistant to quantum attacks
+- **SPHINCS+ Signatures**: Stateless hash-based signatures for enhanced security
+- **DUAL ENFORCEMENT**: BOTH algorithms required simultaneously
+- **NO COMPROMISE**: Maximum quantum resistance with no option to weaken security
+
+### **51% Attack Protection System**
+| Protection Layer | Detection Threshold | Response Time | Effectiveness |
+|------------------|---------------------|---------------|---------------|
+| **Rapid Attack** | 40% | <5 seconds | ⭐⭐⭐⭐⭐ |
+| **Gradual Attack** | 35% | <1 minute | ⭐⭐⭐⭐⭐ |
+| **Pool Collusion** | 30% | <30 seconds | ⭐⭐⭐⭐⭐ |
+| **Geographic** | 60% | <1 minute | ⭐⭐⭐⭐ |
+| **Quantum-Safe** | 100% | Immediate | ⭐⭐⭐⭐⭐ |
+
+### **Privacy & Anonymity**
+- **Ring Signatures**: Untraceable transactions
+- **Stealth Addresses**: One-time addresses for privacy
+- **RingCT**: Confidential transaction amounts
+- **Dandelion++**: Enhanced transaction propagation privacy
+
+## 📊 **Technical Specifications**
 
 ### **Cryptographic Algorithms**
 - **Proof-of-Work**: RandomX (CPU-optimized) + Quantum-Safe integration
@@ -213,71 +171,21 @@ See [setup_dns.sh](setup_dns.sh) for DNS configuration instructions.
 - **Block Size**: Dynamic (up to 40000 bytes)
 - **Difficulty**: Auto-adjusting with emergency spike capability
 - **Consensus**: Proof-of-Work with RandomX + Quantum-Safe validation
+- **Block Reward**: 5.00 QSF per block
+
+### **System & Mining Requirements**
+- **OS**: Linux (Ubuntu 20.04+, Debian 11+, or equivalent)
+- **CPU**: x86_64 architecture (RandomX optimized)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Storage**: 50GB for blockchain (2GB for build)
+- **Network**: Stable internet connection
+- **Security**: Quantum-safe keys mandatory
 
 ### **Wallet Features**
 - **Multi-Network Support**: Mainnet, Testnet, Stagenet
 - **DUAL Quantum-Safe Keys**: Mandatory XMSS + SPHINCS+ generation
 - **Integrated Mining**: Real-time mining with statistics
 - **Secure Storage**: Encrypted wallet files with quantum-safe keys
-
----
-
-## 🛡️ **Security Features**
-
-### **DUAL Quantum Resistance (MANDATORY)**
-- **XMSS Signatures**: Stateful hash-based signatures resistant to quantum attacks
-- **SPHINCS+ Signatures**: Stateless hash-based signatures for enhanced security
-- **DUAL ENFORCEMENT**: BOTH algorithms required simultaneously
-- **NO COMPROMISE**: Maximum quantum resistance with no option to weaken security
-
-### **Complete 51% Attack Protection**
-- **Early Detection**: Catches attacks at 40% (before 51%)
-- **Immediate Response**: 10x difficulty spike in seconds
-- **Network Segmentation**: Isolates attack from healthy network
-- **Automatic Recovery**: Self-healing network after attack
-- **Qubic-Style Resistance**: Complete protection against aggressive attacks
-
-### **Privacy & Anonymity**
-- **Ring Signatures**: Untraceable transactions
-- **Stealth Addresses**: One-time addresses for privacy
-- **RingCT**: Confidential transaction amounts
-
----
-
-## 🚨 **51% Attack Protection System**
-
-### **Multi-Layer Defense**
-- **Layer 1: Early Detection**: Catches attacks at 40% (before 51%)
-- **Layer 2: Immediate Response**: 10x difficulty spike and node isolation
-- **Layer 3: Emergency Protection**: Network segmentation and fork protection
-
-### **Protection Effectiveness**
-| Protection Layer | Detection Threshold | Response Time | Effectiveness |
-|------------------|---------------------|---------------|---------------|
-| **Rapid Attack** | 40% | <5 seconds | ⭐⭐⭐⭐⭐ |
-| **Gradual Attack** | 35% | <1 minute | ⭐⭐⭐⭐⭐ |
-| **Pool Collusion** | 30% | <30 seconds | ⭐⭐⭐⭐⭐ |
-| **Geographic** | 60% | <1 minute | ⭐⭐⭐⭐ |
-| **ISP Concentration** | 60% | <1 minute | ⭐⭐⭐⭐ |
-| **Quantum-Safe** | 100% | Immediate | ⭐⭐⭐⭐⭐ |
-
----
-
-## 📊 **Mining Statistics**
-
-### **Current Network Status**
-- **Block Height**: Dynamic
-- **Network Hashrate**: Real-time monitoring with attack detection
-- **Difficulty**: Auto-adjusting with emergency spike capability
-- **Block Reward**: 5.00 QSF per block
-- **Security Status**: Real-time 51% attack monitoring
-
-### **Mining Requirements**
-- **Hardware**: CPU (RandomX optimized)
-- **Memory**: 2GB RAM minimum
-- **Storage**: 50GB for blockchain
-- **Network**: Stable internet connection
-- **Security**: Quantum-safe keys mandatory
 
 ---
 
@@ -305,122 +213,9 @@ make format
 
 ---
 
-## 🐛 **Troubleshooting**
+## 🔍 **Troubleshooting**
 
 ### **Common Issues**
-
-**Daemon Won't Start**
-```bash
-# Check if daemon is already running
-ps aux | grep qsf
-
-# Start with configuration file
-./build/bin/qsf --config-file=/path/to/qsf-mainnet.conf
-
-# Quantum-safe features are automatically enabled
-```
-
-**GUI Won't Start**
-```bash
-# Check dependencies
-sudo apt install qt5-default libqt5gui5
-
-# Rebuild project
-make clean && make -j$(nproc)
-```
-
-
-**Network Connection Issues**
-```bash
-# Check server status
-1. Verify network selection
-2. Check firewall settings
-3. Configure port forwarding (VMware)
-```
-
----
-
-## 📦 **Installation & Setup**
-
-### **🚀 Quick Start (Recommended)**
-
-The easiest way to get started with QSF is using our automated build system:
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/QSF.git
-cd QSF
-
-# Initialize submodules and setup environment
-git submodule update --init --recursive
-
-# Run the automated build (handles everything)
-./build.sh
-```
-
-The build script automatically:
-- ✅ **Initializes git submodules** (miniupnp, randomx, rapidjson, trezor-common)
-- ✅ **Installs Qt Wayland dependencies** (required for GUI miner)
-- ✅ **Creates configuration files** (`~/.quantumsafefoundation/qsf.local.conf`)
-- ✅ **Sets up the complete environment**
-- ✅ **Builds all components** (daemon, GUI miner, wallet CLI)
-
-### **🔧 Manual Setup (Advanced Users)**
-
-If you prefer manual control or need to customize the setup:
-
-```bash
-# 1. Setup environment and dependencies
-./setup_qsf_environment.sh
-
-# 2. Build specific components
-./build.sh --daemon-only      # Build only the daemon
-./build.sh --gui-miner-only   # Build only the GUI miner
-./build.sh --wallet-only      # Build only the wallet CLI
-./build.sh --debug            # Build in debug mode
-./build.sh --clean            # Clean build
-```
-
-### **📋 System Requirements**
-
-**Minimum Requirements:**
-- **OS**: Linux (Ubuntu 20.04+, Debian 11+, or equivalent)
-- **RAM**: 4GB minimum, 8GB recommended
-- **Storage**: 2GB free space
-- **CPU**: x86_64 architecture
-
-**Dependencies (Auto-installed by build script):**
-- **Build Tools**: cmake, g++, make
-- **Qt5**: Core, Widgets, Network (for GUI miner)
-- **Qt Wayland**: qtwayland5, libqt5waylandclient5 (for GUI miner)
-- **Crypto Libraries**: OpenSSL, libsodium
-- **Network**: libzmq, libunbound
-
-### **🎯 Running QSF Components**
-
-After successful build, you can run:
-
-```bash
-# Start the daemon (recommended)
-./start_qsf_daemon.sh
-
-# Or run components directly
-cd build/bin
-./qsf                    # QSF daemon
-./qsf-gui-miner          # GUI miner
-./qsf-wallet-cli         # Wallet CLI
-./qsf-wallet-rpc         # Wallet RPC server
-```
-
-### **⚙️ Configuration**
-
-Configuration files are automatically created in `~/.quantumsafefoundation/`:
-- **`qsf.local.conf`**: Local daemon configuration (for GUI miner)
-- **`qsf.conf`**: Main daemon configuration
-- **`qsf-wallet`**: Wallet data file
-- **`qsf-wallet.keys`**: Wallet keys
-
-### **🔍 Troubleshooting**
 
 **GUI Miner Issues:**
 - **Segmentation fault**: Run `./setup_qsf_environment.sh` to ensure Qt Wayland is installed
@@ -435,6 +230,7 @@ Configuration files are automatically created in `~/.quantumsafefoundation/`:
 **Network Issues:**
 - **Connection refused**: Check if ports 18070-18073 are available
 - **Firewall**: Ensure ports 18070 (P2P) and 18071 (RPC) are open
+- **Daemon won't start**: Check if daemon is already running with `ps aux | grep qsf`
 
 ---
 
@@ -446,11 +242,9 @@ This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICE
 
 ## 🙏 **Acknowledgments**
 
-- **QSF Project**: Base implementation and RandomX algorithm
+- **Monero Project**: Base implementation and RandomX algorithm
 - **Quantum Cryptography Community**: Research and development of quantum-resistant algorithms
 - **Open Source Contributors**: Community support and contributions
-
----
 
 ## 📞 **Support & Community**
 
@@ -461,9 +255,9 @@ This project is licensed under the BSD 3-Clause License - see the [LICENSE](LICE
 ---
 
 <div align="center">
-  **🔒 QSF Quantum-Safe Foundation - The Most Secure Cryptocurrency in Existence**
-  
-  *Built with ❤️ for a quantum-resistant future with NO COMPROMISES*
-  
-  **DUAL Quantum-Safe + Complete 51% Attack Protection + RandomX Integration**
+  <strong>🔒 QSF Quantum-Safe Foundation - The Most Secure Cryptocurrency in Existence</strong>
+  <br><br>
+  <em>Built with ❤️ for a quantum-resistant future with NO COMPROMISES</em>
+  <br><br>
+  <strong>DUAL Quantum-Safe + Complete 51% Attack Protection + RandomX Integration</strong>
 </div>

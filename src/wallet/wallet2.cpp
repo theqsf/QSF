@@ -8605,7 +8605,7 @@ uint64_t wallet2::get_min_ring_size()
     return 5;
   if (use_fork_rules(2, 10))
     return 3;
-  return 0;
+  return 11; // Default ring size when fork rules don't match (for testnet/stagenet)
 }
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::get_max_ring_size()
@@ -8614,7 +8614,7 @@ uint64_t wallet2::get_max_ring_size()
     return 16;
   if (use_fork_rules(8, 10))
     return 11;
-  return 0;
+  return 11; // Default max ring size when fork rules don't match (for testnet/stagenet)
 }
 //------------------------------------------------------------------------------------------------------------------------------
 uint64_t wallet2::adjust_mixin(uint64_t mixin)
