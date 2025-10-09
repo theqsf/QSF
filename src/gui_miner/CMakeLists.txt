@@ -1,7 +1,7 @@
 # QSF Quantum-Safe Miner GUI
 # CMakeLists.txt
 
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.10)
 
 # Find Qt5 with required components
 find_package(Qt5 REQUIRED COMPONENTS Core Widgets Network)
@@ -9,18 +9,24 @@ if(NOT Qt5_FOUND)
     message(FATAL_ERROR "Qt5 is required to build the GUI miner")
 endif()
 
-# Find ZMQ library
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(ZMQ REQUIRED libzmq)
-if(NOT ZMQ_FOUND)
+# Find ZMQ library - use find_library instead of pkg-config
+find_library(ZMQ_LIB zmq)
+find_path(ZMQ_INCLUDE_PATH zmq.h)
+
+if(NOT ZMQ_LIB)
     message(FATAL_ERROR "ZMQ library is required to build the GUI miner")
+endif()
+
+if(NOT ZMQ_INCLUDE_PATH)
+    message(FATAL_ERROR "ZMQ headers are required to build the GUI miner")
 endif()
 
 message(STATUS "Qt5 found: ${Qt5_DIR}")
 message(STATUS "Qt5 Core: ${Qt5Core_DIR}")
 message(STATUS "Qt5 Widgets: ${Qt5Widgets_DIR}")
 message(STATUS "Qt5 Network: ${Qt5Network_DIR}")
-message(STATUS "ZMQ found: ${ZMQ_LIBRARIES}")
+message(STATUS "ZMQ found: ${ZMQ_LIB}")
+message(STATUS "ZMQ include: ${ZMQ_INCLUDE_PATH}")
 
 # Set Qt variables
 set(QT_VERSION "Qt5")
@@ -32,7 +38,8 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/src/crypto
     ${CMAKE_SOURCE_DIR}/external/randomx/src
     ${CMAKE_SOURCE_DIR}/external/qrcodegen
-    ${ZMQ_INCLUDE_DIRS}
+    ${ZMQ_INCLUDE_PATH}
+    /mingw64/include
 )
 
 # Source files
@@ -74,7 +81,7 @@ target_link_libraries(qsf-gui-miner
     epee
     ${Boost_SYSTEM_LIBRARY}
     ${SODIUM_LIBRARY}
-    ${ZMQ_LIBRARIES}
+    ${ZMQ_LIB}
 )
 
 # Set properties
@@ -102,9 +109,64 @@ if(APPLE)
     target_link_libraries(qsf-gui-miner "-framework Cocoa")
 endif()
 
+# Windows-specific icon handling
+if(WIN32)
+    # Create Windows resource file for the icon
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico"
+        "${CMAKE_CURRENT_BINARY_DIR}/qsf_icon.ico"
+        COPYONLY
+    )
+    
+    # Add Windows resource file
+    add_custom_command(TARGET qsf-gui-miner POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico"
+            "${CMAKE_BINARY_DIR}/bin/qsf_icon.ico"
+        COMMENT "Copying Windows icon"
+    )
+endif()
+
+# Copy required DLLs for distribution
+if(WIN32)
+    # Create a custom target to copy DLLs and daemon executable
+    add_custom_target(copy_gui_miner_dlls ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${Qt5_DIR}/../../../bin/Qt5Core.dll"
+            "${Qt5_DIR}/../../../bin/Qt5Gui.dll"
+            "${Qt5_DIR}/../../../bin/Qt5Widgets.dll"
+            "${Qt5_DIR}/../../../bin/Qt5Network.dll"
+            "${CMAKE_BINARY_DIR}/bin/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "/mingw64/bin/libgcc_s_seh-1.dll"
+            "/mingw64/bin/libstdc++-6.dll"
+            "/mingw64/bin/libwinpthread-1.dll"
+            "/mingw64/bin/libdouble-conversion.dll"
+            "/mingw64/bin/libicudt77.dll"
+            "/mingw64/bin/libicuin77.dll"
+            "/mingw64/bin/libicuuc77.dll"
+            "/mingw64/bin/libpcre2-16-0.dll"
+            "/mingw64/bin/libmd4c.dll"
+            "${CMAKE_BINARY_DIR}/bin/"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin/platforms"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "/mingw64/share/qt5/plugins/platforms/qwindows.dll"
+            "/mingw64/share/qt5/plugins/platforms/qdirect2d.dll"
+            "/mingw64/share/qt5/plugins/platforms/qminimal.dll"
+            "/mingw64/share/qt5/plugins/platforms/qoffscreen.dll"
+            "${CMAKE_BINARY_DIR}/bin/platforms/"
+        # Note: Daemon executable (qsf.exe) is built separately and should already be in bin/
+        COMMENT "Copying GUI miner dependencies"
+    )
+    
+    # Make the GUI miner depend on the DLL copying
+    add_dependencies(qsf-gui-miner copy_gui_miner_dlls)
+endif()
+
 # Print configuration info
 message(STATUS "Building QSF GUI Miner with ${QT_VERSION}")
 message(STATUS "Qt include dirs: ${Qt5_INCLUDE_DIRS}")
 message(STATUS "Qt libraries: ${Qt5_LIBRARIES}")
-message(STATUS "ZMQ include dirs: ${ZMQ_INCLUDE_DIRS}")
-message(STATUS "ZMQ libraries: ${ZMQ_LIBRARIES}") 
+message(STATUS "ZMQ include dir: ${ZMQ_INCLUDE_PATH}")
+message(STATUS "ZMQ library: ${ZMQ_LIB}") 

@@ -34,6 +34,7 @@
 #include <QTextStream>
 #include <QFile>
 #include <QDateTime>
+#include <QIcon>
 #include "main_window.h"
 
 int main(int argc, char *argv[])
@@ -45,6 +46,13 @@ int main(int argc, char *argv[])
   app.setApplicationVersion("2.0");
   app.setOrganizationName("QSF Coin Project");
   app.setOrganizationDomain("qsfcoin.com");
+  
+  // Set application icon (platform-specific)
+#ifdef Q_OS_WIN
+  app.setWindowIcon(QIcon(":/icons/qsf_icon.ico"));
+#else
+  app.setWindowIcon(QIcon(":/icons/qsf_icon.png"));
+#endif
   
   // Set application style
   app.setStyle(QStyleFactory::create("Fusion"));

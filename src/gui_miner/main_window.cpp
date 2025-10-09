@@ -126,24 +126,39 @@ namespace qsf
     , m_walletManager(new GuiWalletManager(this))
     , m_daemonRetryCount(0)
   {
-    // Find daemon path
+    // Find daemon path (platform-aware)
+    QString daemonName;
+#ifdef Q_OS_WIN
+    daemonName = "qsf.exe";
+#else
+    daemonName = "qsf";
+#endif
+
     QStringList possiblePaths = {
-      QCoreApplication::applicationDirPath() + "/qsf",
-      QCoreApplication::applicationDirPath() + "/../qsf",
-      "/home/qsf/quantumsafefoundation/build/bin/qsf",
-      "/usr/local/bin/qsf",
-      "/usr/bin/qsf"
+      QCoreApplication::applicationDirPath() + "/" + daemonName,
+      QCoreApplication::applicationDirPath() + "/../" + daemonName
+#ifndef Q_OS_WIN
+      ,
+      "/home/qsf/quantumsafefoundation/build/bin/" + daemonName,
+      "/usr/local/bin/" + daemonName,
+      "/usr/bin/" + daemonName
+#endif
     };
-    
+
     for (const QString& path : possiblePaths) {
       if (QFile::exists(path)) {
         m_daemonPath = path;
+        qDebug() << "Found daemon at:" << path;
         break;
       }
     }
-    
+
     if (m_daemonPath.isEmpty()) {
       qDebug() << "Warning: QSF daemon not found in standard locations";
+      qDebug() << "Searched paths:";
+      for (const QString& path : possiblePaths) {
+        qDebug() << "  -" << path;
+      }
     }
     
     // Generate local config path
@@ -154,6 +169,19 @@ namespace qsf
     }
     
     setupUI();
+    
+    // Set window icon (platform-specific)
+#ifdef Q_OS_WIN
+    setWindowIcon(QIcon(":/icons/qsf_icon.ico"));
+#else
+    setWindowIcon(QIcon(":/icons/qsf_icon.png"));
+#endif
+    
+    // Set WM_CLASS for proper dock integration on Linux
+#ifndef Q_OS_WIN
+    setProperty("WM_CLASS", "qsf-gui-miner");
+    setWindowTitle("QSF Quantum-Safe Miner");
+#endif
     
     // Use standard ports for better compatibility
     m_localRpcPort = 18071;
@@ -233,10 +261,17 @@ namespace qsf
     
     // Start timers
     m_updateTimer->start(5000);  // Update every 5 seconds
+#ifdef Q_OS_WIN
+    m_miningStatusTimer->start(4000);  // Windows: poll less frequently to reduce UI pressure
+    m_serverStatusTimer->start(45000); // Windows: slower server status checks
+    m_peerCountTimer->start(15000);    // Windows: slower peer count updates
+    m_daemonHealthTimer->start(20000); // Windows: slower daemon health checks
+#else
     m_miningStatusTimer->start(2000);  // Update mining status every 2 seconds
     m_serverStatusTimer->start(30000);  // Check server status every 30 seconds
     m_peerCountTimer->start(10000);  // Update peer count every 10 seconds
     m_daemonHealthTimer->start(15000);  // Check daemon health every 15 seconds
+#endif
     
     // Initialize network manager
     m_networkManager = new QNetworkAccessManager(this);
@@ -913,7 +948,14 @@ namespace qsf
     configLayout->addWidget(new QLabel("Mining Threads:"), 4, 0);
     m_threadsSpinBox = new QSpinBox(miningWidget);
     m_threadsSpinBox->setRange(1, 32);
+#ifdef Q_OS_WIN
+    // Default to a conservative number of threads on Windows to avoid UI stalls
+    int hw = QThread::idealThreadCount();
+    int defaultThreads = qMax(1, hw / 2);
+    m_threadsSpinBox->setValue(defaultThreads);
+#else
     m_threadsSpinBox->setValue(QThread::idealThreadCount());
+#endif
     configLayout->addWidget(m_threadsSpinBox, 4, 1);
     
     // Algorithm Info (Read-only)
@@ -2381,7 +2423,16 @@ namespace qsf
         miningAddress = settings.value("wallet_address", "").toString();
     }
     m_walletAddressEdit->setText(miningAddress);
-    m_threadsSpinBox->setValue(settings.value("threads", QThread::idealThreadCount()).toInt());
+    {
+      int saved = settings.value("threads", QThread::idealThreadCount()).toInt();
+#ifdef Q_OS_WIN
+      int hw = QThread::idealThreadCount();
+      int cap = qMax(1, hw / 2);
+      m_threadsSpinBox->setValue(qBound(1, saved, cap));
+#else
+      m_threadsSpinBox->setValue(saved);
+#endif
+    }
     m_miningModeCombo->setCurrentIndex(settings.value("mining_mode", 0).toInt()); // Default to Solo
     // Algorithm is fixed to RandomX, no need to load from settings
     // Signature algorithm is fixed to dual XMSS+SPHINCS, no need to load from settings
@@ -3336,7 +3387,13 @@ namespace qsf
     if (m_configuredThreads > 0) {
       m_threadsSpinBox->setValue(m_configuredThreads);
     } else {
+#ifdef Q_OS_WIN
+      int hw = QThread::idealThreadCount();
+      int cap = qMax(1, hw / 2);
+      m_threadsSpinBox->setValue(cap);
+#else
       m_threadsSpinBox->setValue(QThread::idealThreadCount());
+#endif
     }
     // If endpoints are specified as tcp:// URIs, connect immediately
     if (m_zmqClient && !m_customZmqEndpoints.isEmpty()) {
