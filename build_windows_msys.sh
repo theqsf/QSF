@@ -46,6 +46,8 @@ install_if_missing mingw-w64-x86_64-make
 install_if_missing mingw-w64-x86_64-gcc
 install_if_missing mingw-w64-x86_64-gcc-libs
 install_if_missing mingw-w64-x86_64-pkg-config
+install_if_missing git
+install_if_missing mingw-w64-x86_64-python
 
 # Qt5 for GUI miner
 install_if_missing mingw-w64-x86_64-qt5-base
@@ -58,7 +60,7 @@ install_if_missing mingw-w64-x86_64-zeromq
 install_if_missing mingw-w64-x86_64-libiconv
 install_if_missing mingw-w64-x86_64-expat
 install_if_missing mingw-w64-x86_64-unbound
-install_if_missing mingw-w64-x86_64-sodium
+install_if_missing mingw-w64-x86_64-libsodium
 install_if_missing mingw-w64-x86_64-hidapi
 install_if_missing mingw-w64-x86_64-protobuf
 install_if_missing mingw-w64-x86_64-libusb

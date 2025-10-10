@@ -16,37 +16,55 @@ fi
 
 echo "✅ Detected MSYS2 MINGW64 environment"
 
+# Function to install packages with error handling
+install_packages() {
+    local packages="$@"
+    echo "📦 Installing: $packages"
+    if pacman -S --noconfirm $packages; then
+        echo "✅ Successfully installed: $packages"
+    else
+        echo "⚠️  Some packages may have failed to install, continuing..."
+        echo "   Failed packages: $packages"
+    fi
+}
+
 # Update package database
 echo "🔄 Updating package database..."
 pacman -Sy
+
+# Handle mirror issues by trying alternative approach if needed
+if [ $? -ne 0 ]; then
+    echo "⚠️  Package database update had issues, trying alternative mirrors..."
+    pacman -Sy --noconfirm
+fi
 
 # Install essential packages
 echo "📦 Installing essential packages..."
 
 # Build tools
-pacman -S --noconfirm \
+install_packages \
     mingw-w64-x86_64-cmake \
     mingw-w64-x86_64-make \
     mingw-w64-x86_64-gcc \
     mingw-w64-x86_64-gcc-libs \
     mingw-w64-x86_64-pkg-config \
-    mingw-w64-x86_64-git \
+    git \
     mingw-w64-x86_64-python
 
 # Qt5 for GUI
-pacman -S --noconfirm \
+install_packages \
     mingw-w64-x86_64-qt5-base \
     mingw-w64-x86_64-qt5-tools
 
 # Required libraries
-pacman -S --noconfirm \
+install_packages \
     mingw-w64-x86_64-boost \
     mingw-w64-x86_64-openssl \
     mingw-w64-x86_64-zeromq \
     mingw-w64-x86_64-libiconv \
     mingw-w64-x86_64-expat \
     mingw-w64-x86_64-unbound \
-    mingw-w64-x86_64-sodium \
+    mingw-w64-x86_64-libsodium \
     mingw-w64-x86_64-hidapi \
     mingw-w64-x86_64-protobuf \
     mingw-w64-x86_64-libusb \

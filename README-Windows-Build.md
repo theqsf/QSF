@@ -23,7 +23,7 @@ This guide provides a reliable method to build QSF for Windows using MSYS2, bypa
 
 ```bash
 # 1. Install dependencies
-pacman -S --noconfirm mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-libs mingw-w64-x86_64-pkg-config mingw-w64-x86_64-git mingw-w64-x86_64-python mingw-w64-x86_64-qt5-base mingw-w64-x86_64-qt5-tools mingw-w64-x86_64-boost mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libiconv mingw-w64-x86_64-expat mingw-w64-x86_64-unbound mingw-w64-x86_64-sodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-protobuf mingw-w64-x86_64-libusb mingw-w64-x86_64-readline mingw-w64-x86_64-ncurses mingw-w64-x86_64-icu
+pacman -S --noconfirm mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-gcc mingw-w64-x86_64-gcc-libs mingw-w64-x86_64-pkg-config git mingw-w64-x86_64-python mingw-w64-x86_64-qt5-base mingw-w64-x86_64-qt5-tools mingw-w64-x86_64-boost mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq mingw-w64-x86_64-libiconv mingw-w64-x86_64-expat mingw-w64-x86_64-unbound mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-protobuf mingw-w64-x86_64-libusb mingw-w64-x86_64-readline mingw-w64-x86_64-ncurses mingw-w64-x86_64-icu
 
 # 2. Create build directory
 mkdir build-windows && cd build-windows
