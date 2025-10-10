@@ -95,6 +95,7 @@ cmake .. -G "MSYS Makefiles" \
     -DARCH=x86-64 \
     -DMANUAL_SUBMODULES=1 \
     -DCMAKE_CXX_STANDARD=17 \
+    -DCMAKE_CXX_STANDARD_REQUIRED=ON \
     -DQt5_DIR=/mingw64/lib/cmake/Qt5 \
     -DCMAKE_PREFIX_PATH=/mingw64
 
