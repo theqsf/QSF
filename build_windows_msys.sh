@@ -68,10 +68,6 @@ install_if_missing mingw-w64-x86_64-readline
 install_if_missing mingw-w64-x86_64-ncurses
 install_if_missing mingw-w64-x86_64-icu
 
-# Additional tools
-install_if_missing mingw-w64-x86_64-git
-install_if_missing mingw-w64-x86_64-python
-
 echo ""
 echo "🏗️  Setting up build environment..."
 
