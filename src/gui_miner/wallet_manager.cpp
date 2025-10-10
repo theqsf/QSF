@@ -155,7 +155,15 @@ void GuiWalletManager::setAutoRefresh(bool enabled, int intervalMs)
     m_autoRefresh = enabled;
     m_refreshInterval = intervalMs;
     if (!m_lib || !m_lib->wallet) return;
-    m_lib->wallet->setAutoRefreshInterval(intervalMs);
+    
+    // Windows-specific: Use longer intervals for better stability
+    #ifdef Q_OS_WIN
+        int adjustedInterval = qMax(intervalMs, 10000); // Minimum 10 seconds on Windows
+    #else
+        int adjustedInterval = intervalMs;
+    #endif
+    
+    m_lib->wallet->setAutoRefreshInterval(adjustedInterval);
     if (enabled) m_lib->wallet->startRefresh();
     else m_lib->wallet->pauseRefresh();
 }

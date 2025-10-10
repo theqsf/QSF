@@ -34,7 +34,12 @@ ZmqRpcClient::ZmqRpcClient(QObject *parent)
     : QObject(parent)
     , m_context(std::make_unique<ZmqContext>())
     , m_connected(false)
+    , m_reconnectTimer(new QTimer(this))
+    , m_reconnectAttempts(0)
 {
+    // Set up reconnection timer
+    m_reconnectTimer->setSingleShot(true);
+    QObject::connect(m_reconnectTimer, &QTimer::timeout, this, &ZmqRpcClient::attemptReconnect);
 }
 
 ZmqRpcClient::~ZmqRpcClient()
@@ -45,6 +50,11 @@ ZmqRpcClient::~ZmqRpcClient()
 bool ZmqRpcClient::connect(const QString &address, uint16_t port)
 {
     try {
+        if (m_connectInProgress) {
+            qDebug() << "Connect already in progress, skipping";
+            return false;
+        }
+        m_connectInProgress = true;
         disconnect();
         
         QString zmqAddress = formatZmqAddress(address, port);
@@ -58,10 +68,33 @@ bool ZmqRpcClient::connect(const QString &address, uint16_t port)
             return false;
         }
         
-        // Set socket options
-        int timeout = 5000; // 5 seconds
+        // Set socket options for better Windows stability
+        int timeout = 15000; // 15 seconds for Windows stability
+        int linger = 2000;   // 2 second linger for clean shutdown
+        int reconnect_ivl = 2000; // 2 second reconnect interval
+        int reconnect_ivl_max = 10000; // 10 second max reconnect interval
+        int heartbeat_ivl = 30000; // 30 second heartbeat interval
+        int heartbeat_timeout = 60000; // 60 second heartbeat timeout
+        int heartbeat_ttl = 60000; // 60 second heartbeat TTL
+        
         zmq_setsockopt(m_context->socket, ZMQ_RCVTIMEO, &timeout, sizeof(timeout));
         zmq_setsockopt(m_context->socket, ZMQ_SNDTIMEO, &timeout, sizeof(timeout));
+        zmq_setsockopt(m_context->socket, ZMQ_LINGER, &linger, sizeof(linger));
+        zmq_setsockopt(m_context->socket, ZMQ_RECONNECT_IVL, &reconnect_ivl, sizeof(reconnect_ivl));
+        zmq_setsockopt(m_context->socket, ZMQ_RECONNECT_IVL_MAX, &reconnect_ivl_max, sizeof(reconnect_ivl_max));
+        
+        // Add heartbeat and TCP keepalive options for Windows stability
+        zmq_setsockopt(m_context->socket, ZMQ_HEARTBEAT_IVL, &heartbeat_ivl, sizeof(heartbeat_ivl));
+        zmq_setsockopt(m_context->socket, ZMQ_HEARTBEAT_TIMEOUT, &heartbeat_timeout, sizeof(heartbeat_timeout));
+        zmq_setsockopt(m_context->socket, ZMQ_HEARTBEAT_TTL, &heartbeat_ttl, sizeof(heartbeat_ttl));
+        int keepalive = 1;
+        int keepaliveCnt = 5;     // probes
+        int keepaliveIdle = 30;   // seconds before starting probes
+        int keepaliveIntvl = 10;  // interval between probes
+        zmq_setsockopt(m_context->socket, ZMQ_TCP_KEEPALIVE, &keepalive, sizeof(keepalive));
+        zmq_setsockopt(m_context->socket, ZMQ_TCP_KEEPALIVE_CNT, &keepaliveCnt, sizeof(keepaliveCnt));
+        zmq_setsockopt(m_context->socket, ZMQ_TCP_KEEPALIVE_IDLE, &keepaliveIdle, sizeof(keepaliveIdle));
+        zmq_setsockopt(m_context->socket, ZMQ_TCP_KEEPALIVE_INTVL, &keepaliveIntvl, sizeof(keepaliveIntvl));
         
         // Connect to the server
         int result = zmq_connect(m_context->socket, zmqAddress.toStdString().c_str());
@@ -77,14 +110,21 @@ bool ZmqRpcClient::connect(const QString &address, uint16_t port)
         m_connected = true;
         clearLastError();
         
+        // Store connection details for reconnection
+        m_lastAddress = address;
+        m_lastPort = port;
+        m_reconnectAttempts = 0;
+        
         qDebug() << "Successfully connected to ZMQ RPC";
         emit connected();
+        m_connectInProgress = false;
         return true;
         
     } catch (const std::exception &e) {
         m_lastError = QString("Connection error: %1").arg(e.what());
         qDebug() << "Connection failed:" << m_lastError;
         emit error(m_lastError);
+        m_connectInProgress = false;
         return false;
     }
 }
@@ -125,8 +165,42 @@ bool ZmqRpcClient::connect(qsf::NetworkType networkType)
     return connectToAny(hosts, port);
 }
 
+void ZmqRpcClient::scheduleReconnect()
+{
+    if (m_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        qDebug() << "Max reconnection attempts reached, giving up";
+        return;
+    }
+    
+    if (!m_lastAddress.isEmpty() && m_lastPort > 0) {
+        m_reconnectAttempts++;
+        int delay = m_reconnectAttempts * 2000; // Exponential backoff: 2s, 4s, 6s, 8s, 10s
+        qDebug() << "Scheduling reconnection attempt" << m_reconnectAttempts << "in" << delay << "ms";
+        m_reconnectTimer->start(delay);
+    }
+}
+
+void ZmqRpcClient::attemptReconnect()
+{
+    if (m_lastAddress.isEmpty() || m_lastPort == 0) {
+        return;
+    }
+    
+    qDebug() << "Attempting reconnection to" << m_lastAddress << ":" << m_lastPort;
+    bool success = connect(m_lastAddress, m_lastPort);
+    if (success) {
+        qDebug() << "Reconnection successful";
+        m_reconnectAttempts = 0;
+    } else {
+        qDebug() << "Reconnection failed, will retry";
+        scheduleReconnect();
+    }
+}
+
 void ZmqRpcClient::disconnect()
 {
+    m_reconnectTimer->stop();
+    
     if (m_context->socket) {
         zmq_close(m_context->socket);
         m_context->socket = nullptr;
@@ -227,9 +301,26 @@ QJsonObject ZmqRpcClient::sendRequest(const QJsonObject &request)
         int recvResult = zmq_msg_recv(&responseMsg, m_context->socket, 0);
         
         if (recvResult == -1) {
-            m_lastError = QString("Failed to receive ZMQ message: %1").arg(zmq_strerror(zmq_errno()));
+            int errorCode = zmq_errno();
+            QString errorMsg = zmq_strerror(errorCode);
+            m_lastError = QString("Failed to receive ZMQ message: %1 (code: %2)").arg(errorMsg).arg(errorCode);
             zmq_msg_close(&responseMsg);
-            emit this->error(m_lastError);
+            
+            // Handle specific Windows ZMQ errors with better error messages
+            if (errorCode == ETERM || errorCode == ENOTSOCK || errorCode == EAGAIN) {
+                m_connected = false;
+                emit disconnected();
+                // Schedule reconnection for Windows stability
+                if (!m_connectInProgress && !m_reconnectTimer->isActive()) {
+                    scheduleReconnect();
+                }
+                // Don't emit error for timeout/disconnection - let reconnection handle it
+                if (errorCode != EAGAIN) {
+                    emit this->error(m_lastError);
+                }
+            } else {
+                emit this->error(m_lastError);
+            }
             return QJsonObject();
         }
         

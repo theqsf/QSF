@@ -43,7 +43,7 @@ if (IOS)
     INCLUDE(CmakeLists_IOS.txt)
 endif()
 
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 message(STATUS "CMake version ${CMAKE_VERSION}")
 
 project(quantumsafefoundation)
@@ -219,7 +219,7 @@ function(forbid_undefined_symbols)
     file(MAKE_DIRECTORY "${TEST_PROJECT}")
     file(WRITE "${TEST_PROJECT}/CMakeLists.txt"
       [=[
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 project(test)
 option(EXPECT_SUCCESS "" ON)
 file(WRITE "${CMAKE_SOURCE_DIR}/incorrect_source.cpp" "void undefined_symbol(); void symbol() { undefined_symbol(); }")
@@ -1087,7 +1087,15 @@ if(NOT Boost_FOUND)
 elseif(Boost_FOUND)
   message(STATUS "Found Boost Version: ${Boost_VERSION_STRING}")
 
-  set(BOOST_COMPONENTS filesystem thread date_time chrono serialization program_options locale)
+  set(BOOST_COMPONENTS filesystem thread date_time chrono serialization program_options)
+  
+  # Skip locale component to avoid ICU linking issues on MinGW
+  if(NOT MINGW)
+    list(APPEND BOOST_COMPONENTS locale)
+    message(STATUS "Adding Boost locale component")
+  else()
+    message(STATUS "Skipping Boost locale component on MinGW to avoid ICU linking issues")
+  endif()
 
   # Boost System is header-only since 1.69
   if (Boost_VERSION_STRING VERSION_LESS 1.69.0)
@@ -1110,12 +1118,29 @@ add_definitions(-DBOOST_ASIO_ENABLE_SEQUENTIAL_STRAND_ALLOCATION)
 add_definitions(-DBOOST_NO_AUTO_PTR)
 add_definitions(-DBOOST_UUID_DISABLE_ALIGNMENT) # This restores UUID's std::has_unique_object_representations property
 
+# Disable Boost locale ICU backend to avoid linking issues
+if(MINGW AND NOT ICU_FOUND)
+  add_definitions(-DBOOST_LOCALE_NO_POSIX_BACKEND)
+  add_definitions(-DBOOST_LOCALE_NO_STD_BACKEND)
+  message(STATUS "Disabling Boost locale ICU backend to avoid linking issues")
+endif()
+
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
+
+# Find ICU libraries
+find_package(ICU COMPONENTS uc i18n data)
+if(ICU_FOUND)
+  message(STATUS "Found ICU: ${ICU_INCLUDE_DIR} (found version \"${ICU_VERSION}\") found components: ${ICU_FOUND_COMPONENTS}")
+  message(STATUS "ICU found: ${ICU_INCLUDE_DIR}")
+else()
+  message(STATUS "ICU not found via find_package, using manual detection")
+endif()
+
 if(MINGW)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wa,-mbig-obj")
   set(EXTRA_LIBRARIES mswsock;ws2_32;iphlpapi;crypt32;bcrypt)
   if(DEPENDS)
-    set(ICU_LIBRARIES icuio icui18n icuuc icudata icutu iconv)
+    set(ICU_LIBRARIES icuio icui18n icuuc icudt icutu iconv)
   else()
     set(ICU_LIBRARIES icuio icuin icuuc icudt icutu iconv)
   endif()
@@ -1134,6 +1159,26 @@ elseif(NOT MSVC AND NOT DEPENDS)
 endif()
 
 list(APPEND EXTRA_LIBRARIES ${CMAKE_DL_LIBS})
+
+# Add ICU libraries to EXTRA_LIBRARIES in correct order
+if(ICU_FOUND)
+  # Use ICU libraries found by find_package
+  list(APPEND EXTRA_LIBRARIES ${ICU_LIBRARIES})
+elseif(MINGW)
+  # For MinGW, use the correct ICU library order
+  set(ICU_LIBRARIES icuio icuin icuuc icudt icutu iconv)
+  list(APPEND EXTRA_LIBRARIES ${ICU_LIBRARIES})
+endif()
+
+# Ensure ICU libraries are linked when Boost locale is used
+if(Boost_VERSION_STRING VERSION_LESS 1.77.0)
+  # Boost locale requires ICU libraries for older versions
+  if(NOT ICU_FOUND AND MINGW)
+    message(STATUS "Adding ICU libraries for Boost locale compatibility")
+    set(ICU_LIBRARIES icuio icuin icuuc icudt icutu iconv)
+    list(APPEND EXTRA_LIBRARIES ${ICU_LIBRARIES})
+  endif()
+endif()
 
 if (HIDAPI_FOUND OR LibUSB_COMPILE_TEST_PASSED)
   if (APPLE)
@@ -1298,11 +1343,29 @@ set(BUILD_GUI_DEPS ON CACHE BOOL "Build GUI dependencies." FORCE)
 set(QSF_QUANTUM_SAFE_ENABLED ON CACHE BOOL "Enable quantum-safe features." FORCE)
 
 find_package(PythonInterp)
-find_program(iwyu_tool_path NAMES iwyu_tool.py iwyu_tool)
-if (iwyu_tool_path AND PYTHONINTERP_FOUND)
-  add_custom_target(iwyu
-    COMMAND "${PYTHON_EXECUTABLE}" "${iwyu_tool_path}" -p "${CMAKE_BINARY_DIR}" -- --no_fwd_decls
-    COMMENT "Running include-what-you-use tool"
-    VERBATIM
-  )
+# Create distribution package
+if(WIN32 AND MINGW)
+    add_custom_target(distribution_package ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/distribution"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_BINARY_DIR}/bin" "${CMAKE_BINARY_DIR}/distribution/QSF"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/README.md" "${CMAKE_BINARY_DIR}/distribution/QSF/"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/qsf.conf.example" "${CMAKE_BINARY_DIR}/distribution/QSF/"
+        COMMENT "Creating distribution package"
+    )
+    
+    # Create a simple batch file to run the GUI miner
+    file(WRITE "${CMAKE_BINARY_DIR}/distribution/QSF/run-gui-miner.bat" 
+        "@echo off\n"
+        "cd /d \"%~dp0\"\n"
+        "qsf-gui-miner.exe\n"
+        "pause\n"
+    )
+    
+    # Create a batch file to run the daemon
+    file(WRITE "${CMAKE_BINARY_DIR}/distribution/QSF/run-daemon.bat"
+        "@echo off\n"
+        "cd /d \"%~dp0\"\n"
+        "qsf.exe --rpc-bind-ip=127.0.0.1 --rpc-bind-port=18072\n"
+        "pause\n"
+    )
 endif()

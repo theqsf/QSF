@@ -5,6 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
 #include <memory>
 #include <string>
 #include "wallet/api/wallet2_api.h"
@@ -59,11 +60,21 @@ private:
     std::unique_ptr<ZmqContext> m_context;
     QString m_lastError;
     bool m_connected;
+    
+    // Reconnection support
+    QTimer* m_reconnectTimer;
+    bool m_connectInProgress = false;
+    QString m_lastAddress;
+    uint16_t m_lastPort;
+    int m_reconnectAttempts;
+    static const int MAX_RECONNECT_ATTEMPTS = 5;
 
     // Helper methods
     QJsonObject sendRequest(const QJsonObject &request);
     QString formatZmqAddress(const QString &address, uint16_t port);
     uint16_t getZmqPort(qsf::NetworkType networkType);
+    void scheduleReconnect();
+    void attemptReconnect();
 
     // DNS seed helpers
     QStringList resolveSeedLabelTxt(const QString &seedLabel);

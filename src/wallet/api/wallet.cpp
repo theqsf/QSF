@@ -426,8 +426,14 @@ uint64_t Wallet::maximumAllowedAmount()
 void Wallet::init(const char *argv0, const char *default_log_base_name, const std::string &log_path, bool console) {
 #ifdef WIN32
     // Activate UTF-8 support for Boost filesystem classes on Windows
-    std::locale::global(boost::locale::generator().generate(""));
-    boost::filesystem::path::imbue(std::locale());
+    // Use std::locale instead of boost::locale to avoid ICU dependency
+    try {
+        std::locale::global(std::locale(""));
+        boost::filesystem::path::imbue(std::locale());
+    } catch (const std::exception&) {
+        // Fallback to default locale if system locale fails
+        std::locale::global(std::locale::classic());
+    }
 #endif
     epee::string_tools::set_module_name_and_folder(argv0);
     mlog_configure(log_path.empty() ? mlog_get_default_log_path(default_log_base_name) : log_path.c_str(), console);

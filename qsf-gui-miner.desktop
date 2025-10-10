@@ -1,0 +1,15 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=QSF Quantum-Safe Miner
+Comment=QSF Quantum-Safe Cryptocurrency Mining Application
+Exec=/home/m/QSF/build/bin/qsf-gui-miner
+Icon=/home/m/QSF/src/gui_miner/icons/qsf_icon.png
+Terminal=false
+StartupNotify=true
+Categories=Network;Finance;
+Keywords=cryptocurrency;mining;quantum-safe;qsf;
+StartupWMClass=qsf-gui-miner
+MimeType=
+X-GNOME-Autostart-enabled=false
+X-GNOME-Autostart-Delay=0
