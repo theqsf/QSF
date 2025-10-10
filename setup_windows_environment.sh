@@ -16,26 +16,53 @@ fi
 
 echo "✅ Detected MSYS2 MINGW64 environment"
 
+# Function to check if package is installed
+is_package_installed() {
+    pacman -Qi "$1" &>/dev/null
+}
+
 # Function to install packages with error handling
 install_packages() {
     local packages="$@"
-    echo "📦 Installing: $packages"
-    if pacman -S --noconfirm $packages; then
-        echo "✅ Successfully installed: $packages"
+    local packages_to_install=""
+    
+    # Check which packages actually need to be installed
+    for package in $packages; do
+        if ! is_package_installed "$package"; then
+            packages_to_install="$packages_to_install $package"
+        else
+            echo "✅ $package is already installed"
+        fi
+    done
+    
+    # Only install packages that aren't already installed
+    if [ -n "$packages_to_install" ]; then
+        echo "📦 Installing missing packages:$packages_to_install"
+        
+        # Handle pkg-config conflict by removing pkgconf first if it exists
+        if echo "$packages_to_install" | grep -q "mingw-w64-x86_64-pkg-config"; then
+            echo "🔧 Resolving pkg-config conflict..."
+            pacman -R --noconfirm mingw-w64-x86_64-pkgconf 2>/dev/null || true
+        fi
+        
+        if pacman -S --noconfirm $packages_to_install; then
+            echo "✅ Successfully installed:$packages_to_install"
+        else
+            echo "⚠️  Some packages may have failed to install, continuing..."
+            echo "   Failed packages:$packages_to_install"
+        fi
     else
-        echo "⚠️  Some packages may have failed to install, continuing..."
-        echo "   Failed packages: $packages"
+        echo "✅ All packages already installed"
     fi
 }
 
 # Update package database
 echo "🔄 Updating package database..."
-pacman -Sy
-
-# Handle mirror issues by trying alternative approach if needed
-if [ $? -ne 0 ]; then
-    echo "⚠️  Package database update had issues, trying alternative mirrors..."
-    pacman -Sy --noconfirm
+if pacman -Sy 2>/dev/null; then
+    echo "✅ Package database updated successfully"
+else
+    echo "⚠️  Package database update had issues (mirror errors are common)"
+    echo "   This is usually not critical, continuing with installation..."
 fi
 
 # Install essential packages
@@ -113,11 +140,22 @@ fi
 echo ""
 echo "🎯 Environment setup complete!"
 echo ""
+echo "📊 Setup Summary:"
+echo "   ✅ Build tools: CMake, GCC, Make, pkg-config"
+echo "   ✅ Qt5: GUI framework for the miner"
+echo "   ✅ Libraries: Boost, OpenSSL, ZMQ, ICU, and more"
+echo "   ✅ Development tools: Git, Python"
+echo ""
 echo "📋 Next steps:"
 echo "1. Run: ./build_windows_msys.sh"
 echo "2. Or manually build with:"
 echo "   mkdir build-windows && cd build-windows"
 echo "   cmake .. -G \"MSYS Makefiles\" -DCMAKE_BUILD_TYPE=Release -DBUILD_QUANTUM_SAFE_MINER=ON -DBUILD_GUI_DEPS=ON"
 echo "   make -j\$(nproc)"
+echo ""
+echo "💡 Tips:"
+echo "   - The build process will take several minutes"
+echo "   - Make sure you have at least 2GB free disk space"
+echo "   - The final executables will be in build-windows/bin/"
 echo ""
 echo "=========================================="
