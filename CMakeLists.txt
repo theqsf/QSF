@@ -1139,7 +1139,7 @@ endif()
 if(MINGW)
   set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wa,-mbig-obj")
   set(EXTRA_LIBRARIES mswsock;ws2_32;iphlpapi;crypt32;bcrypt)
-  # Add Abseil libraries for protobuf compatibility
+  # Add basic Abseil libraries for protobuf compatibility
   find_library(ABSL_LOG_INTERNAL_MESSAGE absl_log_internal_message)
   find_library(ABSL_LOG_INTERNAL_LOG_SINK_SET absl_log_internal_log_sink_set)
   find_library(ABSL_LOG_INTERNAL_FORMAT absl_log_internal_format)
@@ -1156,6 +1156,7 @@ if(MINGW)
   find_library(ABSL_LOG_INTERNAL_LOG_SINK absl_log_internal_log_sink)
   find_library(ABSL_LOG_INTERNAL_FLAGS absl_log_internal_flags)
   
+  # Add found libraries to EXTRA_LIBRARIES
   if(ABSL_LOG_INTERNAL_MESSAGE)
     list(APPEND EXTRA_LIBRARIES ${ABSL_LOG_INTERNAL_MESSAGE})
   endif()
