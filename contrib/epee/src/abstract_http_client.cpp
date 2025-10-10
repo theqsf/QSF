@@ -2,6 +2,7 @@
 #include "net/http_base.h"
 #include "net/net_parse_helpers.h"
 #include "misc_log_ex.h"
+#include <cmath>
 
 #undef qsf_DEFAULT_LOG_CATEGORY
 #define qsf_DEFAULT_LOG_CATEGORY "net.http"
