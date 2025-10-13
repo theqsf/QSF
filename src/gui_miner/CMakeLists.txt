@@ -161,7 +161,7 @@ if(WIN32)
     )
     
     # Make the GUI miner depend on the DLL copying
-    add_dependencies(qsf-gui-miner copy_gui_miner_dlls)
+    # add_dependencies(qsf-gui-miner copy_gui_miner_dlls)
 endif()
 
 # Print configuration info
