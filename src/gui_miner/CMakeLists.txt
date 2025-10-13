@@ -118,11 +118,11 @@ if(WIN32)
         COPYONLY
     )
     
-    # Add Windows resource file
+    # Copy icon next to the executable in your current build output
     add_custom_command(TARGET qsf-gui-miner POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico"
-            "${CMAKE_BINARY_DIR}/bin/qsf_icon.ico"
+            "$<TARGET_FILE_DIR:qsf-gui-miner>/qsf_icon.ico"
         COMMENT "Copying Windows icon"
     )
 endif()
