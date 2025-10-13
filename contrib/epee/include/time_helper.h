@@ -31,6 +31,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <cstdint>
 #include <string>
 
 namespace epee

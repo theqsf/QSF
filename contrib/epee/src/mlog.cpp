@@ -37,6 +37,7 @@
 
 #include <time.h>
 #include <atomic>
+#include <cstdint>
 #include <boost/filesystem.hpp>
 #include <boost/algorithm/string.hpp>
 #include "string_tools.h"

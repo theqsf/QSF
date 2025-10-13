@@ -10819,7 +10819,8 @@ int main(int argc, char* argv[])
 
 #ifdef WIN32
   // Activate UTF-8 support for Boost filesystem classes on Windows
-  std::locale::global(boost::locale::generator().generate(""));
+  // Use standard locale instead of Boost.Locale to avoid ICU linking issues on MinGW
+  std::locale::global(std::locale(""));
   boost::filesystem::path::imbue(std::locale());
 #endif
   setlocale(LC_CTYPE, "");

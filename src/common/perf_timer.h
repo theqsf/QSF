@@ -31,6 +31,7 @@
 #include <string>
 #include <stdio.h>
 #include <memory>
+#include <cstdint>
 #include "misc_log_ex.h"
 
 namespace tools
