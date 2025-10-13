@@ -1,174 +1,110 @@
 #!/bin/bash
-
-# QSF Windows Build Script for MSYS2
-# This script sets up and builds QSF for Windows using MSYS2 native packages
-
 set -e
 
 echo "=========================================="
-echo "QSF Windows Build Script for MSYS2"
+echo "🚀 QSF Windows Build Script (Streamlined)"
 echo "=========================================="
 
-# Check if we're in MSYS environment
+# 🧭 Check environment
 if [[ "$MSYSTEM" != "MINGW64" ]]; then
-    echo "❌ Error: This script must be run in MSYS2 MINGW64 environment"
-    echo "   Please open MSYS2 MINGW64 terminal and run this script"
+    echo "❌ Please run this script inside MSYS2 MINGW64 terminal."
     exit 1
 fi
+echo "✅ MSYS2 MINGW64 environment detected"
 
-echo "✅ Detected MSYS2 MINGW64 environment"
+# 🧰 Required packages
+packages=(
+    mingw-w64-x86_64-cmake
+    mingw-w64-x86_64-make
+    mingw-w64-x86_64-gcc
+    mingw-w64-x86_64-gcc-libs
+    mingw-w64-x86_64-pkg-config
+    mingw-w64-x86_64-python
+    mingw-w64-x86_64-boost
+    mingw-w64-x86_64-openssl
+    mingw-w64-x86_64-zeromq
+    mingw-w64-x86_64-libiconv
+    mingw-w64-x86_64-expat
+    mingw-w64-x86_64-unbound
+    mingw-w64-x86_64-libsodium
+    mingw-w64-x86_64-hidapi
+    mingw-w64-x86_64-protobuf
+    mingw-w64-x86_64-libusb
+    mingw-w64-x86_64-readline
+    mingw-w64-x86_64-ncurses
+    mingw-w64-x86_64-icu
+    mingw-w64-x86_64-qt5-base
+    mingw-w64-x86_64-qt5-tools
+    git
+)
 
-# Function to check if package is installed
-check_package() {
-    if pacman -Qi "$1" &>/dev/null; then
-        echo "✅ $1 is installed"
-        return 0
+echo ""
+echo "🔍 Checking dependencies..."
+for pkg in "${packages[@]}"; do
+    if ! pacman -Qi "$pkg" &>/dev/null; then
+        echo "📦 Installing $pkg..."
+        pacman -S --noconfirm "$pkg"
     else
-        echo "❌ $1 is not installed"
-        return 1
+        echo "✅ $pkg installed"
     fi
-}
+done
 
-# Function to install package if not present
-install_if_missing() {
-    if ! check_package "$1"; then
-        echo "📦 Installing $1..."
-        pacman -S --noconfirm "$1"
-    fi
-}
-
-echo ""
-echo "🔍 Checking and installing dependencies..."
-
-# Essential build tools
-install_if_missing mingw-w64-x86_64-cmake
-install_if_missing mingw-w64-x86_64-make
-install_if_missing mingw-w64-x86_64-gcc
-install_if_missing mingw-w64-x86_64-gcc-libs
-install_if_missing mingw-w64-x86_64-pkg-config
-install_if_missing git
-install_if_missing mingw-w64-x86_64-python
-
-# Qt5 for GUI miner
-install_if_missing mingw-w64-x86_64-qt5-base
-install_if_missing mingw-w64-x86_64-qt5-tools
-
-# Required libraries
-install_if_missing mingw-w64-x86_64-boost
-install_if_missing mingw-w64-x86_64-openssl
-install_if_missing mingw-w64-x86_64-zeromq
-install_if_missing mingw-w64-x86_64-libiconv
-install_if_missing mingw-w64-x86_64-expat
-install_if_missing mingw-w64-x86_64-unbound
-install_if_missing mingw-w64-x86_64-libsodium
-install_if_missing mingw-w64-x86_64-hidapi
-install_if_missing mingw-w64-x86_64-protobuf
-install_if_missing mingw-w64-x86_64-libusb
-install_if_missing mingw-w64-x86_64-readline
-install_if_missing mingw-w64-x86_64-ncurses
-install_if_missing mingw-w64-x86_64-icu
-
-echo ""
-echo "🏗️  Setting up build environment..."
-
-# Create build directory
+# 🧹 Prepare build directory
 BUILD_DIR="build-windows"
-if [ -d "$BUILD_DIR" ]; then
-    echo "🧹 Cleaning existing build directory..."
-    rm -rf "$BUILD_DIR"
-fi
-
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-echo "📁 Build directory: $(pwd)"
-
-# Configure with CMake
 echo ""
-echo "⚙️  Configuring with CMake..."
-
+echo "⚙️ Configuring with CMake..."
 cmake .. -G "MSYS Makefiles" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DBUILD_QUANTUM_SAFE_MINER=ON \
     -DBUILD_GUI_DEPS=ON \
     -DQSF_QUANTUM_SAFE_ENABLED=ON \
     -DARCH=x86-64 \
-    -DMANUAL_SUBMODULES=1 \
-    -DCMAKE_CXX_STANDARD=17 \
-    -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+    -DCMAKE_PREFIX_PATH=/mingw64 \
     -DQt5_DIR=/mingw64/lib/cmake/Qt5 \
-    -DCMAKE_PREFIX_PATH=/mingw64
+    -DCMAKE_CXX_STANDARD=17 \
+    -DCMAKE_CXX_STANDARD_REQUIRED=ON
 
-if [ $? -ne 0 ]; then
-    echo "❌ CMake configuration failed!"
-    exit 1
-fi
-
-echo "✅ CMake configuration successful!"
-
-# Build the project
 echo ""
 echo "🔨 Building QSF..."
-
-# Get number of CPU cores for parallel build
 CORES=$(nproc)
-echo "Using $CORES parallel jobs"
+mingw32-make -j"$CORES"
 
-make -j"$CORES"
-
-if [ $? -ne 0 ]; then
-    echo "❌ Build failed!"
-    exit 1
-fi
-
-echo "✅ Build successful!"
-
-# Check what was built
-echo ""
-echo "📋 Build results:"
-if [ -d "bin" ]; then
-    echo "📁 Built executables:"
-    ls -la bin/*.exe 2>/dev/null || echo "No .exe files found"
-    
-    echo ""
-    echo "📁 Built libraries:"
-    ls -la bin/*.dll 2>/dev/null || echo "No .dll files found"
-else
-    echo "❌ No bin directory found"
-fi
-
-# Create distribution package
-echo ""
-echo "📦 Creating distribution package..."
-
+# 🗃️ Create distribution directory
 DIST_DIR="distribution/QSF"
 mkdir -p "$DIST_DIR"
-
-# Copy executables
-if [ -d "bin" ]; then
-    cp bin/*.exe "$DIST_DIR/" 2>/dev/null || true
-    cp bin/*.dll "$DIST_DIR/" 2>/dev/null || true
-    
-    # Copy Qt platform plugins if they exist
-    if [ -d "bin/platforms" ]; then
-        cp -r bin/platforms "$DIST_DIR/"
-    fi
-fi
-
-# Copy documentation and config
+cp bin/*.exe "$DIST_DIR/" 2>/dev/null || true
+cp bin/*.dll "$DIST_DIR/" 2>/dev/null || true
 cp ../README.md "$DIST_DIR/" 2>/dev/null || true
 cp ../qsf.conf.example "$DIST_DIR/" 2>/dev/null || true
 
-# Create batch files for easy execution
-cat > "$DIST_DIR/run-gui-miner.bat" << 'EOF'
-@echo off
-cd /d "%~dp0"
-echo Starting QSF GUI Miner...
-qsf-gui-miner.exe
-pause
-EOF
+# 🧩 Auto-copy required DLLs
+echo ""
+echo "🧩 Collecting DLL dependencies..."
+cd "$DIST_DIR"
 
-cat > "$DIST_DIR/run-daemon.bat" << 'EOF'
+# Use ldd to find dependencies
+for exe in *.exe; do
+    echo "🔹 Scanning $exe..."
+    for dll in $(ldd "$exe" | grep "=> /" | awk '{print $3}' | grep mingw64 | sort -u); do
+        base=$(basename "$dll")
+        if [ ! -f "$base" ]; then
+            echo "   ↳ Copying $base"
+            cp "$dll" .
+        fi
+    done
+done
+
+# 🖼️ Copy Qt platform plugins
+mkdir -p platforms
+cp /mingw64/share/qt5/plugins/platforms/qwindows.dll platforms/ 2>/dev/null || true
+
+# 🧰 Create batch launchers
+echo ""
+echo "🧰 Creating Windows launchers..."
+cat > run-daemon.bat <<'EOF'
 @echo off
 cd /d "%~dp0"
 echo Starting QSF Daemon...
@@ -176,56 +112,34 @@ qsf.exe --rpc-bind-ip=127.0.0.1 --rpc-bind-port=18072
 pause
 EOF
 
-cat > "$DIST_DIR/README-Windows.txt" << 'EOF'
-QSF Windows Build
-================
-
-This is a Windows build of QSF (Quantum Safe Foundation) cryptocurrency.
-
-Files:
-- qsf.exe: The QSF daemon
-- qsf-gui-miner.exe: The GUI mining application
-- qsf-wallet-cli.exe: Command-line wallet
-- *.dll: Required libraries
-
-Quick Start:
-1. Double-click "run-daemon.bat" to start the daemon
-2. Double-click "run-gui-miner.bat" to start the GUI miner
-
-For advanced usage, run the executables directly from command prompt.
-
-Note: Make sure all .dll files are in the same directory as the executables.
+cat > run-gui-miner.bat <<'EOF'
+@echo off
+cd /d "%~dp0"
+echo Starting QSF GUI Miner...
+qsf-gui-miner.exe
+pause
 EOF
 
-echo "✅ Distribution package created in: $DIST_DIR"
+# 🧾 Write readme
+cat > README-Windows.txt <<'EOF'
+==========================================
+QuantumSafe (QSF) - Windows Build Package
+==========================================
 
-# Test the build
-echo ""
-echo "🧪 Testing the build..."
+Contents:
+- qsf.exe ................ Daemon
+- qsf-gui-miner.exe ...... GUI Miner
+- qsf-wallet-cli.exe ..... Command-line Wallet
+- *.dll .................. Dependencies
+- platforms\ ............. Qt platform plugin (required)
 
-if [ -f "bin/qsf-gui-miner.exe" ]; then
-    echo "✅ GUI miner executable found"
-    echo "   Size: $(du -h bin/qsf-gui-miner.exe | cut -f1)"
-else
-    echo "❌ GUI miner executable not found"
-fi
-
-if [ -f "bin/qsf.exe" ]; then
-    echo "✅ Daemon executable found"
-    echo "   Size: $(du -h bin/qsf.exe | cut -f1)"
-else
-    echo "❌ Daemon executable not found"
-fi
+Usage:
+1. Run "run-daemon.bat" to start the node
+2. Run "run-gui-miner.bat" to start the miner
+EOF
 
 echo ""
-echo "🎉 Windows build completed successfully!"
-echo ""
-echo "📁 Output location: $(pwd)/$DIST_DIR"
-echo "🚀 You can now copy the QSF folder to any Windows machine and run it!"
-echo ""
-echo "💡 Tips:"
-echo "   - Test the GUI miner: ./bin/qsf-gui-miner.exe"
-echo "   - Test the daemon: ./bin/qsf.exe --help"
-echo "   - Distribution package is ready in: $DIST_DIR"
-echo ""
+echo "✅ Packaging complete!"
+echo "📁 Output folder: $(pwd)"
+echo "🎉 Your QSF Windows build is ready!"
 echo "=========================================="
