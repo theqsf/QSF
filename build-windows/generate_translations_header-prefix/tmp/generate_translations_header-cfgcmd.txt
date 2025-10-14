@@ -1,1 +1,0 @@
-cmd='C:/msys64/mingw64/bin/cmake.exe;-DLRELEASE_PATH=;-GMinGW Makefiles;-S;<SOURCE_DIR><SOURCE_SUBDIR>;-B;<BINARY_DIR>'
