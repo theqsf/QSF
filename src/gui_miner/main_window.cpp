@@ -171,11 +171,28 @@ namespace qsf
     setupUI();
     
     // Set window icon (platform-specific)
-#ifdef Q_OS_WIN
-    setWindowIcon(QIcon(":/icons/qsf_icon.ico"));
-#else
-    setWindowIcon(QIcon(":/icons/qsf_icon.png"));
-#endif
+    // Try multiple paths for the window icon
+    QStringList windowIconPaths = {
+        ":/icons/qsf_icon.ico",
+        ":/icons/qsf_icon.png",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.png"
+    };
+    
+    bool windowIconSet = false;
+    for (const QString& path : windowIconPaths) {
+        QIcon icon(path);
+        if (!icon.isNull()) {
+            setWindowIcon(icon);
+            windowIconSet = true;
+            qDebug() << "Window icon loaded from:" << path;
+            break;
+        }
+    }
+    
+    if (!windowIconSet) {
+        qDebug() << "Failed to load window icon from all paths";
+    }
     
     // Set WM_CLASS for proper dock integration on Linux
 #ifndef Q_OS_WIN
@@ -347,7 +364,21 @@ namespace qsf
     // Set window properties
     setWindowTitle("QSF Quantum-Safe GUI Miner v2.0");
     setMinimumSize(1000, 700);
-    setWindowIcon(QIcon(":/icons/qsf_icon.png"));
+    // Try to set window icon again with fallback paths
+    QStringList fallbackIconPaths = {
+        ":/icons/qsf_icon.ico",
+        ":/icons/qsf_icon.png",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.png"
+    };
+    
+    for (const QString& path : fallbackIconPaths) {
+        QIcon icon(path);
+        if (!icon.isNull()) {
+            setWindowIcon(icon);
+            break;
+        }
+    }
     
     // Set dark mode style
     setStyleSheet(R"(
@@ -656,6 +687,8 @@ namespace qsf
     // Try multiple paths for the logo
     QStringList logoPaths = {
         ":/icons/qsf_icon.png",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
+        QCoreApplication::applicationDirPath() + "/qsf_icon.png",
         QCoreApplication::applicationDirPath() + "/../src/gui_miner/icons/qsf_icon.png",
         QCoreApplication::applicationDirPath() + "/../../src/gui_miner/icons/qsf_icon.png",
         QDir::homePath() + "/QSF/src/gui_miner/icons/qsf_icon.png",

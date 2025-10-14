@@ -35,6 +35,8 @@
 #include <QFile>
 #include <QDateTime>
 #include <QIcon>
+#include <QCoreApplication>
+#include <QDebug>
 #include "main_window.h"
 
 int main(int argc, char *argv[])
@@ -48,11 +50,28 @@ int main(int argc, char *argv[])
   app.setOrganizationDomain("qsfcoin.com");
   
   // Set application icon (platform-specific)
-#ifdef Q_OS_WIN
-  app.setWindowIcon(QIcon(":/icons/qsf_icon.ico"));
-#else
-  app.setWindowIcon(QIcon(":/icons/qsf_icon.png"));
-#endif
+  // Try multiple paths for the application icon
+  QStringList iconPaths = {
+    ":/icons/qsf_icon.ico",
+    ":/icons/qsf_icon.png",
+    QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
+    QCoreApplication::applicationDirPath() + "/qsf_icon.png"
+  };
+  
+  bool iconSet = false;
+  for (const QString& path : iconPaths) {
+    QIcon icon(path);
+    if (!icon.isNull()) {
+      app.setWindowIcon(icon);
+      iconSet = true;
+      qDebug() << "Application icon loaded from:" << path;
+      break;
+    }
+  }
+  
+  if (!iconSet) {
+    qDebug() << "Failed to load application icon from all paths";
+  }
   
   // Set application style
   app.setStyle(QStyleFactory::create("Fusion"));

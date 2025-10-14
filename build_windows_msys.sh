@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # QSF Windows Build Script for MSYS2
-# Streamlined version with automatic submodule handling
+# Updated version with automatic generator detection and proper compiler setup
 
 set -e
 
@@ -9,13 +9,22 @@ echo "=========================================="
 echo "QSF Windows Build Script for MSYS2"
 echo "=========================================="
 
-# Check if we're in MSYS2 MINGW64 environment
-if [[ "$MSYSTEM" != "MINGW64" ]]; then
-    echo "❌ Error: This script must be run in MSYS2 MINGW64 environment"
-    echo "   Please open MSYS2 MINGW64 terminal and run this script"
+# --- Environment Check ---
+if [[ "$MSYSTEM" != "MINGW64" && "$MSYSTEM" != "MSYS" ]]; then
+    echo "❌ Error: This script must be run in MSYS2 (MINGW64 or MSYS) environment"
+    echo "   Open MSYS2 MINGW64 terminal and run this script again."
     exit 1
 fi
-echo "✅ Detected MSYS2 MINGW64 environment"
+
+if [[ "$MSYSTEM" == "MINGW64" ]]; then
+    echo "✅ Detected MSYS2 MINGW64 environment"
+    CMAKE_GENERATOR="MinGW Makefiles"
+    MAKE_CMD="mingw32-make"
+else
+    echo "✅ Detected MSYS2 (non-MINGW) environment"
+    CMAKE_GENERATOR="MSYS Makefiles"
+    MAKE_CMD="make"
+fi
 
 # --- Dependency Installation ---
 check_package() {
@@ -31,19 +40,19 @@ install_if_missing() {
 
 echo ""
 echo "🔍 Checking and installing dependencies..."
-# Essential build tools
+# Core tools
 for pkg in mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-gcc \
            mingw-w64-x86_64-gcc-libs mingw-w64-x86_64-pkg-config git \
            mingw-w64-x86_64-python; do
     install_if_missing "$pkg"
 done
 
-# Qt5 for GUI miner
+# Qt5
 for pkg in mingw-w64-x86_64-qt5-base mingw-w64-x86_64-qt5-tools; do
     install_if_missing "$pkg"
 done
 
-# Required libraries
+# Libraries
 for pkg in mingw-w64-x86_64-boost mingw-w64-x86_64-openssl mingw-w64-x86_64-zeromq \
            mingw-w64-x86_64-libiconv mingw-w64-x86_64-expat mingw-w64-x86_64-unbound \
            mingw-w64-x86_64-libsodium mingw-w64-x86_64-hidapi mingw-w64-x86_64-protobuf \
@@ -52,10 +61,10 @@ for pkg in mingw-w64-x86_64-boost mingw-w64-x86_64-openssl mingw-w64-x86_64-zero
     install_if_missing "$pkg"
 done
 
-# --- Git Submodule Handling ---
+# --- Git Submodules ---
 echo ""
 echo "🔄 Checking and updating Git submodules..."
-if [ -d "../.git" ] || [ -d ".git" ]; then
+if [ -d ".git" ]; then
     git submodule sync --recursive
     git submodule update --init --recursive --force
     echo "✅ Submodules are up to date"
@@ -63,22 +72,19 @@ else
     echo "⚠️ Not a git repository. Skipping submodule update."
 fi
 
-# --- Build Environment Setup ---
+# --- Build Setup ---
 echo ""
-echo "🏗️  Setting up build environment..."
+echo "🏗️ Setting up build environment..."
 BUILD_DIR="build-windows"
-if [ -d "$BUILD_DIR" ]; then
-    echo "🧹 Cleaning existing build directory..."
-    rm -rf "$BUILD_DIR"
-fi
+rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 echo "📁 Build directory: $(pwd)"
 
-# --- CMake Configuration ---
+# --- CMake Config ---
 echo ""
-echo "⚙️  Configuring with CMake..."
-cmake .. -G "MSYS Makefiles" \
+echo "⚙️ Configuring with CMake..."
+cmake .. -G "$CMAKE_GENERATOR" \
     -DCMAKE_BUILD_TYPE=Release \
     -DBUILD_QUANTUM_SAFE_MINER=ON \
     -DBUILD_GUI_DEPS=ON \
@@ -87,54 +93,40 @@ cmake .. -G "MSYS Makefiles" \
     -DMANUAL_SUBMODULES=1 \
     -DCMAKE_CXX_STANDARD=17 \
     -DCMAKE_CXX_STANDARD_REQUIRED=ON \
-    -DQt5_DIR=/mingw64/lib/cmake/Qt5 \
-    -DCMAKE_PREFIX_PATH=/mingw64
+    -DCMAKE_PREFIX_PATH=/mingw64 \
+    -DQt5_DIR=/mingw64/lib/cmake/Qt5
 
 echo "✅ CMake configuration successful!"
 
-# --- Build Project ---
+# --- Build ---
 echo ""
 echo "🔨 Building QSF..."
-CORES=$(nproc)
+CORES=2
 echo "Using $CORES parallel jobs"
-make -j"$CORES"
+$MAKE_CMD -j"$CORES" || { echo "❌ Build failed"; exit 1; }
 echo "✅ Build successful!"
 
-# --- Build Output ---
-echo ""
-echo "📋 Build results:"
-if [ -d "bin" ]; then
-    echo "📁 Executables:"
-    ls -la bin/*.exe 2>/dev/null || echo "No .exe files found"
-    echo ""
-    echo "📁 Libraries:"
-    ls -la bin/*.dll 2>/dev/null || echo "No .dll files found"
-else
-    echo "❌ No bin directory found"
-fi
-
-# --- Distribution Packaging ---
+# --- Packaging ---
 echo ""
 echo "📦 Creating distribution package..."
 DIST_DIR="distribution/QSF"
 mkdir -p "$DIST_DIR"
 
-# Copy binaries and DLLs
+# Copy binaries
 if [ -d "bin" ]; then
     cp bin/*.exe "$DIST_DIR/" 2>/dev/null || true
     cp bin/*.dll "$DIST_DIR/" 2>/dev/null || true
-
-    # Copy Qt platform plugins if exist
-    if [ -d "bin/platforms" ]; then
-        cp -r bin/platforms "$DIST_DIR/"
-    fi
+    [ -d "bin/platforms" ] && cp -r bin/platforms "$DIST_DIR/"
+    # Copy icon files for GUI miner
+    cp bin/qsf_icon.ico "$DIST_DIR/" 2>/dev/null || true
+    cp ../src/gui_miner/icons/qsf_icon.png "$DIST_DIR/" 2>/dev/null || true
 fi
 
-# Copy docs/config
+# Copy docs
 cp ../README.md "$DIST_DIR/" 2>/dev/null || true
 cp ../qsf.conf.example "$DIST_DIR/" 2>/dev/null || true
 
-# Batch files
+# Create run scripts
 cat > "$DIST_DIR/run-gui-miner.bat" << 'EOF'
 @echo off
 cd /d "%~dp0"
@@ -153,12 +145,12 @@ EOF
 
 cat > "$DIST_DIR/README-Windows.txt" << 'EOF'
 QSF Windows Build
-================
+=================
 
 Files:
 - qsf.exe: Daemon
-- qsf-gui-miner.exe: GUI miner
-- qsf-wallet-cli.exe: CLI wallet
+- qsf-gui-miner.exe: GUI Miner
+- qsf-wallet-cli.exe: CLI Wallet
 - *.dll: Required libraries
 
 Quick Start:
@@ -166,15 +158,15 @@ Quick Start:
 2. run-gui-miner.bat
 EOF
 
-echo "✅ Distribution package created in: $DIST_DIR"
+echo "✅ Distribution package created: $DIST_DIR"
 
-# --- Build Test ---
+# --- Verify ---
 echo ""
 echo "🧪 Testing build..."
 [[ -f "bin/qsf-gui-miner.exe" ]] && echo "✅ GUI miner found" || echo "❌ GUI miner missing"
 [[ -f "bin/qsf.exe" ]] && echo "✅ Daemon found" || echo "❌ Daemon missing"
 
 echo ""
-echo "🎉 Windows build completed successfully!"
-echo "📁 Output location: $(pwd)/$DIST_DIR"
+echo "🎉 Build completed successfully!"
+echo "📁 Output: $(pwd)/$DIST_DIR"
 echo "=========================================="

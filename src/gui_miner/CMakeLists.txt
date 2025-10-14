@@ -3,34 +3,28 @@
 
 cmake_minimum_required(VERSION 3.10)
 
+project(QSFGuiMiner LANGUAGES CXX)
+
 # Find Qt5 with required components
 find_package(Qt5 REQUIRED COMPONENTS Core Widgets Network)
 if(NOT Qt5_FOUND)
     message(FATAL_ERROR "Qt5 is required to build the GUI miner")
 endif()
 
-# Find ZMQ library - use find_library instead of pkg-config
+# Find ZMQ library
 find_library(ZMQ_LIB zmq)
 find_path(ZMQ_INCLUDE_PATH zmq.h)
 
 if(NOT ZMQ_LIB)
     message(FATAL_ERROR "ZMQ library is required to build the GUI miner")
 endif()
-
 if(NOT ZMQ_INCLUDE_PATH)
     message(FATAL_ERROR "ZMQ headers are required to build the GUI miner")
 endif()
 
 message(STATUS "Qt5 found: ${Qt5_DIR}")
-message(STATUS "Qt5 Core: ${Qt5Core_DIR}")
-message(STATUS "Qt5 Widgets: ${Qt5Widgets_DIR}")
-message(STATUS "Qt5 Network: ${Qt5Network_DIR}")
 message(STATUS "ZMQ found: ${ZMQ_LIB}")
 message(STATUS "ZMQ include: ${ZMQ_INCLUDE_PATH}")
-
-# Set Qt variables
-set(QT_VERSION "Qt5")
-set(QT_PREFIX "Qt5")
 
 # Include directories
 include_directories(
@@ -68,7 +62,7 @@ add_executable(qsf-gui-miner
     ${GUI_MINER_HEADERS}
 )
 
-# Link libraries - add back required dependencies
+# Link libraries
 target_link_libraries(qsf-gui-miner
     Qt5::Core
     Qt5::Widgets
@@ -90,7 +84,7 @@ set_target_properties(qsf-gui-miner PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
-# Enable automoc for Qt
+# Enable automoc, autorcc, autouic for Qt
 set_target_properties(qsf-gui-miner PROPERTIES
     AUTOMOC ON
     AUTOUIC ON
@@ -111,14 +105,47 @@ endif()
 
 # Windows-specific icon handling
 if(WIN32)
-    # Create Windows resource file for the icon
+    # Create Windows resource file for icon embedding
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc" 
+        "IDI_ICON1 ICON \"${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico\"\n"
+        "1 VERSIONINFO\n"
+        "FILEVERSION 2,0,0,0\n"
+        "PRODUCTVERSION 2,0,0,0\n"
+        "FILEFLAGSMASK 0x3fL\n"
+        "FILEFLAGS 0x0L\n"
+        "FILEOS 0x40004L\n"
+        "FILETYPE 0x1L\n"
+        "FILESUBTYPE 0x0L\n"
+        "BEGIN\n"
+        "    BLOCK \"StringFileInfo\"\n"
+        "    BEGIN\n"
+        "        BLOCK \"040904b0\"\n"
+        "        BEGIN\n"
+        "            VALUE \"CompanyName\", \"QSF Coin Project\"\n"
+        "            VALUE \"FileDescription\", \"QSF Quantum-Safe GUI Miner\"\n"
+        "            VALUE \"FileVersion\", \"2.0.0.0\"\n"
+        "            VALUE \"InternalName\", \"qsf-gui-miner\"\n"
+        "            VALUE \"LegalCopyright\", \"Copyright (c) 2024, The QSF Quantum-Safe Coin Project\"\n"
+        "            VALUE \"OriginalFilename\", \"qsf-gui-miner.exe\"\n"
+        "            VALUE \"ProductName\", \"QSF Quantum-Safe Miner\"\n"
+        "            VALUE \"ProductVersion\", \"2.0.0.0\"\n"
+        "        END\n"
+        "    END\n"
+        "    BLOCK \"VarFileInfo\"\n"
+        "    BEGIN\n"
+        "        VALUE \"Translation\", 0x409, 1200\n"
+        "    END\n"
+        "END\n"
+    )
+    
+    # Add the resource file to the executable
+    target_sources(qsf-gui-miner PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc")
+    
     configure_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico"
         "${CMAKE_CURRENT_BINARY_DIR}/qsf_icon.ico"
         COPYONLY
     )
-    
-    # Copy icon next to the executable in your current build output
     add_custom_command(TARGET qsf-gui-miner POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.ico"
@@ -127,46 +154,117 @@ if(WIN32)
     )
 endif()
 
-# Copy required DLLs for distribution
+# -------------------
+# DLL Copy Section
+# -------------------
 if(WIN32)
-    # Create a custom target to copy DLLs and daemon executable
-    add_custom_target(copy_gui_miner_dlls ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${Qt5_DIR}/../../../bin/Qt5Core.dll"
-            "${Qt5_DIR}/../../../bin/Qt5Gui.dll"
-            "${Qt5_DIR}/../../../bin/Qt5Widgets.dll"
-            "${Qt5_DIR}/../../../bin/Qt5Network.dll"
-            "${CMAKE_BINARY_DIR}/bin/"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "/mingw64/bin/libgcc_s_seh-1.dll"
-            "/mingw64/bin/libstdc++-6.dll"
-            "/mingw64/bin/libwinpthread-1.dll"
-            "/mingw64/bin/libdouble-conversion.dll"
-            "/mingw64/bin/libicudt77.dll"
-            "/mingw64/bin/libicuin77.dll"
-            "/mingw64/bin/libicuuc77.dll"
-            "/mingw64/bin/libpcre2-16-0.dll"
-            "/mingw64/bin/libmd4c.dll"
-            "${CMAKE_BINARY_DIR}/bin/"
+    # Detect MSYS2 root for reliable pathing
+    set(MINGW_PREFIX "$ENV{MINGW_PREFIX}")
+    if(NOT MINGW_PREFIX)
+        set(MINGW_PREFIX "C:/msys64/mingw64")
+    endif()
+
+    # List of required MinGW DLLs
+    set(MINGW_DLLS
+        libgcc_s_seh-1.dll
+        libstdc++-6.dll
+        libwinpthread-1.dll
+        libdouble-conversion.dll
+        libicudt77.dll
+        libicuin77.dll
+        libicuuc77.dll
+        libpcre2-16-0.dll
+        libpcre2-32-0.dll
+        libpcre2-8-0.dll
+        libpcre2-posix-3.dll
+        libmd4c.dll
+    )
+
+    # List of required Qt5 DLLs
+    set(QT5_DLLS
+        Qt5Core.dll
+        Qt5Gui.dll
+        Qt5Widgets.dll
+        Qt5Network.dll
+    )
+
+    # List of additional Qt5 support DLLs
+    set(QT5_SUPPORT_DLLS
+        libfreetype-6.dll
+        libgraphite2.dll
+        libharfbuzz-0.dll
+        libintl-8.dll
+        libpng16-16.dll
+        libzstd.dll
+        zlib1.dll
+        libglib-2.0-0.dll
+        libbrotlicommon.dll
+        libbrotlidec.dll
+        libbrotlienc.dll
+        libbz2-1.dll
+        libffi-8.dll
+        libiconv-2.dll
+    )
+
+    # Copy MinGW DLLs
+    foreach(dll ${MINGW_DLLS})
+        add_custom_command(TARGET qsf-gui-miner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MINGW_PREFIX}/bin/${dll}"
+                "${CMAKE_BINARY_DIR}/bin/"
+            COMMENT "Copying ${dll}"
+        )
+    endforeach()
+
+    # Copy Qt5 DLLs
+    foreach(dll ${QT5_DLLS})
+        add_custom_command(TARGET qsf-gui-miner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MINGW_PREFIX}/bin/${dll}"
+                "${CMAKE_BINARY_DIR}/bin/"
+            COMMENT "Copying ${dll}"
+        )
+    endforeach()
+
+    # Copy Qt5 support DLLs
+    foreach(dll ${QT5_SUPPORT_DLLS})
+        add_custom_command(TARGET qsf-gui-miner POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${MINGW_PREFIX}/bin/${dll}"
+                "${CMAKE_BINARY_DIR}/bin/"
+            COMMENT "Copying ${dll}"
+        )
+    endforeach()
+
+    # Copy Qt5 platform plugins
+    add_custom_command(TARGET qsf-gui-miner POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_BINARY_DIR}/bin/platforms"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "/mingw64/share/qt5/plugins/platforms/qwindows.dll"
-            "/mingw64/share/qt5/plugins/platforms/qdirect2d.dll"
-            "/mingw64/share/qt5/plugins/platforms/qminimal.dll"
-            "/mingw64/share/qt5/plugins/platforms/qoffscreen.dll"
-            "${CMAKE_BINARY_DIR}/bin/platforms/"
-        # Note: Daemon executable (qsf.exe) is built separately and should already be in bin/
-        COMMENT "Copying GUI miner dependencies"
+        COMMENT "Creating platforms directory"
     )
     
-    # Make the GUI miner depend on the DLL copying
-    # add_dependencies(qsf-gui-miner copy_gui_miner_dlls)
+    add_custom_command(TARGET qsf-gui-miner POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MINGW_PREFIX}/share/qt5/plugins/platforms/qwindows.dll"
+            "${CMAKE_BINARY_DIR}/bin/platforms/"
+        COMMENT "Copying Qt5 Windows platform plugin"
+    )
+    
+    add_custom_command(TARGET qsf-gui-miner POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${MINGW_PREFIX}/share/qt5/plugins/platforms/qminimal.dll"
+            "${CMAKE_BINARY_DIR}/bin/platforms/"
+        COMMENT "Copying Qt5 minimal platform plugin"
+    )
+
+    # Note: Using manual DLL copying instead of windeployqt for MSYS2 compatibility
+    # windeployqt can cause issues with missing OpenGL DLLs in MSYS2 environment
+    message(STATUS "Using manual Qt5 DLL copying for MSYS2 compatibility")
 endif()
 
+
 # Print configuration info
-message(STATUS "Building QSF GUI Miner with ${QT_VERSION}")
+message(STATUS "Building QSF GUI Miner with Qt5")
 message(STATUS "Qt include dirs: ${Qt5_INCLUDE_DIRS}")
 message(STATUS "Qt libraries: ${Qt5_LIBRARIES}")
 message(STATUS "ZMQ include dir: ${ZMQ_INCLUDE_PATH}")
-message(STATUS "ZMQ library: ${ZMQ_LIB}") 
+message(STATUS "ZMQ library: ${ZMQ_LIB}")
