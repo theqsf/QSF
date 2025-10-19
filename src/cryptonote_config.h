@@ -278,7 +278,6 @@ namespace config
   std::vector<std::string> const SEED_NODES = {
     "seeds.qsfchain.com",      // QSF_MAINNET - Silicon Valley
     "seeds.qsfcoin.com",       // qsf4_mainnet - London
-    "seeds.qsfcoin.network",   // qsf2_mainnet - New Jersey
     "seeds.qsfcoin.org",       // qsf3_mainnet - Sydney
     "seeds.qsfnetwork.co"      // qsf5_mainnet - Tokyo
   };

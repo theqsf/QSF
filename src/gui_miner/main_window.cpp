@@ -3297,7 +3297,6 @@ namespace qsf
       "add-priority-node=seeds.qsfchain.com:18070\n"
       "add-priority-node=seeds.qsfnetwork.co:18070\n"
       "add-priority-node=seeds.qsfcoin.org:18070\n"
-      "add-priority-node=seeds.qsfcoin.network:18070\n"
       "add-priority-node=seeds.qsfcoin.com:18070\n"
     );
   }
@@ -3310,7 +3309,6 @@ namespace qsf
       "miner.zmq_endpoints=tcp://seeds.qsfchain.com:18072\n"
       "miner.zmq_endpoints=tcp://seeds.qsfnetwork.co:18072\n"
       "miner.zmq_endpoints=tcp://seeds.qsfcoin.org:18072\n"
-      "miner.zmq_endpoints=tcp://seeds.qsfcoin.network:18072\n"
       "miner.zmq_endpoints=tcp://seeds.qsfcoin.com:18072\n"
       "# Threads: 0=auto-detect\n"
       "miner.threads=0\n"
@@ -3394,7 +3392,6 @@ namespace qsf
         m_customZmqEndpoints << "seeds.qsfchain.com:18072"
                               << "seed2.qsfchain.com:18072"
                               << "seeds.qsfcoin.com:18072"
-                              << "seeds.qsfcoin.network:18072"
                               << "seeds.qsfcoin.org:18072"
                               << "seeds.qsfnetwork.co:18072";
       }

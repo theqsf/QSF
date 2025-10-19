@@ -98,7 +98,7 @@ cd build/bin
 ### **Domain-Based Seed Nodes (Like QSF)**
 | Network | RPC Port | P2P Port | Daemon URL | Seed Nodes |
 |---------|----------|----------|------------|------------|
-| **Mainnet** | 18071 | 18070 | `http://qsfchain.com:18071` | `seeds.qsfchain.com`<br>`seeds.qsfcoin.com`<br>`seeds.qsfcoin.network`<br>`seeds.qsfcoin.org`<br>`seeds.qsfnetwork.co` |
+| **Mainnet** | 18071 | 18070 | `http://qsfchain.com:18071` | `seeds.qsfchain.com`<br>`seeds.qsfcoin.com`<br>`seeds.qsfcoin.org`<br>`seeds.qsfnetwork.co` |
 | **Testnet** | 28071 | 28070 | `http://qsfnetwork.com:28071` | `seeds.qsfnetwork.com` |
 | **Stagenet** | 38071 | 38070 | `http://qsfcoin.network:38071` | `seeds.qsfcoin.network` |
 

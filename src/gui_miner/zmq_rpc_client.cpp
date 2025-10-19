@@ -157,7 +157,6 @@ bool ZmqRpcClient::connect(qsf::NetworkType networkType)
             hosts << "seeds.qsfchain.com"
                   << "seed2.qsfchain.com"
                   << "seeds.qsfcoin.com"
-                  << "seeds.qsfcoin.network"
                   << "seeds.qsfcoin.org"
                   << "seeds.qsfnetwork.co";
             break;

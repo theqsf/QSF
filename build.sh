@@ -216,7 +216,6 @@ in-peers=8
 add-priority-node=seeds.qsfchain.com:18070
 add-priority-node=seeds.qsfnetwork.co:18070
 add-priority-node=seeds.qsfcoin.org:18070
-add-priority-node=seeds.qsfcoin.network:18070
 add-priority-node=seeds.qsfcoin.com:18070
 EOF
         echo "✅ Created basic $QSF_CONFIG_DIR/qsf.local.conf"

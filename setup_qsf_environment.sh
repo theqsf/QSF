@@ -73,7 +73,6 @@ hide-my-port=0
 add-priority-node=seeds.qsfchain.com:18070
 add-priority-node=seeds.qsfnetwork.co:18070
 add-priority-node=seeds.qsfcoin.org:18070
-add-priority-node=seeds.qsfcoin.network:18070
 add-priority-node=seeds.qsfcoin.com:18070
 EOF
 
@@ -106,7 +105,6 @@ hide-my-port=0
 add-priority-node=seeds.qsfchain.com:18070
 add-priority-node=seeds.qsfnetwork.co:18070
 add-priority-node=seeds.qsfcoin.org:18070
-add-priority-node=seeds.qsfcoin.network:18070
 add-priority-node=seeds.qsfcoin.com:18070
 EOF
     echo "✅ Created $QSF_CONFIG_DIR/qsf.conf"
