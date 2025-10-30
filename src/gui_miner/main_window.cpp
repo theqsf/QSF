@@ -163,10 +163,17 @@ namespace qsf
     }
     
     // Generate local config path
+    #ifdef Q_OS_WIN
+        QString baseDir = QString::fromWCharArray(_wgetenv(L"PROGRAMDATA"));
+        if (baseDir.isEmpty()) baseDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+        baseDir = QDir::toNativeSeparators(baseDir) + "\\quantumsafefoundation";
+    #else
+        QString baseDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation";
+    #endif
     if (m_currentNetwork == qsf::MAINNET) {
-      m_localConfigPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation/qsf.local.conf";
+        m_localConfigPath = baseDir + "/qsf.local.conf";
     } else {
-      m_localConfigPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation/testnet/qsf.testnet.conf";
+        m_localConfigPath = baseDir + "/testnet/qsf.testnet.conf";
     }
     
     setupUI();
