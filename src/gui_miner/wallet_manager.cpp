@@ -129,6 +129,59 @@ bool GuiWalletManager::openWallet(const QString& walletPath, const QString& pass
     return true;
 }
 
+bool GuiWalletManager::recoverWallet(const QString& password, const QString& walletPath, const QString& mnemonic, uint64_t restoreHeight)
+{
+    if (m_hasWallet) closeWallet();
+    m_password = password;
+    m_walletPath = walletPath;
+    
+    // Validate mnemonic seed
+    if (mnemonic.trimmed().isEmpty()) {
+        emit error("Mnemonic seed is empty");
+        return false;
+    }
+    
+    ensureWalletManager();
+    if (!m_lib->manager) {
+        emit error("Wallet manager not available");
+        return false;
+    }
+
+    // Recover wallet using the mnemonic seed
+    qsf::Wallet* w = m_lib->manager->recoveryWallet(
+        walletPath.toStdString(),
+        password.toStdString(),
+        mnemonic.trimmed().toStdString(),
+        m_lib->net,
+        restoreHeight
+    );
+    
+    if (!w) {
+        emit error("Failed to recover wallet from mnemonic");
+        return false;
+    }
+    
+    m_lib->wallet = w;
+    m_lib->wallet->setListener(m_listener.get());
+    setDaemonAddress(m_daemonAddress);
+    
+    // Mark rescan as needed for recovered wallet
+    m_rescanCompletedOnce = false;
+    {
+        QSettings s("QSFCoin", "QuantumSafeWallet");
+        s.setValue(QString("wallet_rescan_done_%1").arg(m_walletPath), false);
+    }
+    
+    updateCachedFieldsFromWallet(true);
+    
+    // Start rescan from the restore height
+    if (!m_rescanCompletedOnce) {
+        rescanBlockchainFromZero();
+    }
+    
+    return true;
+}
+
 void GuiWalletManager::closeWallet()
 {
     if (m_lib && m_lib->wallet && m_lib->manager) {

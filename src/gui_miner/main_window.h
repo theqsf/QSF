@@ -90,6 +90,7 @@ namespace qsf
     void onStopMining();
     void onOpenWallet();
     void onGenerateWallet();
+    void onRecoverWallet();
     void onNetworkChanged(int index);
     void onMiningModeChanged(const QString& mode);
     void onMiningUpdate(double hashRate, uint64_t acceptedShares, uint64_t rejectedShares);
@@ -188,6 +189,7 @@ namespace qsf
     QLabel* m_networkHashrateLabel;
     QLabel* m_peerCountLabel;
     QPushButton* m_generateWalletBtn;
+    QPushButton* m_recoverWalletBtn;
     QPushButton* m_copyAddressBtn;
     QPushButton* m_showPrivateKeyBtn;
     QPushButton* m_rescanWalletBtn;

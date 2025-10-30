@@ -103,6 +103,14 @@ if(APPLE)
     target_link_libraries(qsf-gui-miner "-framework Cocoa")
 endif()
 
+# Copy icon to build directory for all platforms
+add_custom_command(TARGET qsf-gui-miner POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/icons/qsf_icon.png"
+        "$<TARGET_FILE_DIR:qsf-gui-miner>/qsf_icon.png"
+    COMMENT "Copying application icon"
+)
+
 # Windows-specific icon handling
 if(WIN32)
     # Create Windows resource file for icon embedding

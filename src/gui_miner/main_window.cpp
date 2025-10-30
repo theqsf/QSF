@@ -62,6 +62,7 @@
 #include <QTextBrowser>
 #include <QClipboard>
 #include <QInputDialog>
+#include <QDialog>
 #include <QCryptographicHash>
 #include <QByteArray>
 #include <QRandomGenerator>
@@ -173,10 +174,10 @@ namespace qsf
     // Set window icon (platform-specific)
     // Try multiple paths for the window icon
     QStringList windowIconPaths = {
+        QCoreApplication::applicationDirPath() + "/qsf_icon.png",  // Check build directory first
+        ":/icons/qsf_icon.png",  // Then check embedded resources
         ":/icons/qsf_icon.ico",
-        ":/icons/qsf_icon.png",
-        QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
-        QCoreApplication::applicationDirPath() + "/qsf_icon.png"
+        QCoreApplication::applicationDirPath() + "/qsf_icon.ico"
     };
     
     bool windowIconSet = false;
@@ -366,10 +367,10 @@ namespace qsf
     setMinimumSize(1000, 700);
     // Try to set window icon again with fallback paths
     QStringList fallbackIconPaths = {
+        QCoreApplication::applicationDirPath() + "/qsf_icon.png",  // Check build directory first
+        ":/icons/qsf_icon.png",  // Then check embedded resources
         ":/icons/qsf_icon.ico",
-        ":/icons/qsf_icon.png",
-        QCoreApplication::applicationDirPath() + "/qsf_icon.ico",
-        QCoreApplication::applicationDirPath() + "/qsf_icon.png"
+        QCoreApplication::applicationDirPath() + "/qsf_icon.ico"
     };
     
     for (const QString& path : fallbackIconPaths) {
@@ -868,6 +869,8 @@ namespace qsf
     QHBoxLayout* walletBtnLayout = new QHBoxLayout();
     m_generateWalletBtn = new QPushButton("Generate New Wallet", walletGroup);
     m_generateWalletBtn->setVisible(true);
+    m_recoverWalletBtn = new QPushButton("Recover Wallet", walletGroup);
+    m_recoverWalletBtn->setVisible(true);
     m_copyAddressBtn = new QPushButton("Copy Address", walletGroup);
     m_showPrivateKeyBtn = new QPushButton("Show Private Key", walletGroup);
     m_rescanWalletBtn = new QPushButton("Rescan Wallet", walletGroup);
@@ -877,6 +880,7 @@ namespace qsf
     m_rescanWalletBtn->setEnabled(false);
     
     walletBtnLayout->addWidget(m_generateWalletBtn);
+    walletBtnLayout->addWidget(m_recoverWalletBtn);
     walletBtnLayout->addWidget(m_copyAddressBtn);
     walletBtnLayout->addWidget(m_rescanWalletBtn);
     walletBtnLayout->addWidget(m_showPrivateKeyBtn);
@@ -1201,6 +1205,7 @@ namespace qsf
     connect(m_startMiningBtn, &QPushButton::clicked, this, &MainWindow::onStartMining);
     connect(m_stopMiningBtn, &QPushButton::clicked, this, &MainWindow::onStopMining);
     connect(m_generateWalletBtn, &QPushButton::clicked, this, &MainWindow::onGenerateWallet);
+    connect(m_recoverWalletBtn, &QPushButton::clicked, this, &MainWindow::onRecoverWallet);
     // Add open wallet action if a button/menu exists (fallback: bind to Ctrl+O)
     QShortcut* openWalletShortcut = new QShortcut(QKeySequence("Ctrl+O"), this);
     connect(openWalletShortcut, &QShortcut::activated, this, &MainWindow::onOpenWallet);
@@ -1750,6 +1755,115 @@ namespace qsf
   void MainWindow::generateNewWallet()
   {
     onGenerateWallet();
+  }
+
+  void MainWindow::onRecoverWallet()
+  {
+    // Ask for wallet save path
+    QString defaultDir;
+    if (m_currentNetwork == qsf::MAINNET) {
+      defaultDir = QDir::homePath() + "/.quantumsafefoundation/wallets";
+    } else if (m_currentNetwork == qsf::TESTNET) {
+      defaultDir = QDir::homePath() + "/.quantumsafefoundation/testnet/wallets";
+    } else {
+      defaultDir = QDir::homePath() + "/.quantumsafefoundation/stagenet/wallets";
+    }
+    QDir().mkpath(defaultDir);
+    
+    QString walletPath = QFileDialog::getSaveFileName(this, "Recover Wallet File", defaultDir + "/qsf-wallet-recovered", "Wallet Files (*)");
+    if (walletPath.isEmpty()) return;
+
+    // Ask for password
+    bool ok1 = false;
+    QString password = QInputDialog::getText(this, "Wallet Password", "Enter a password for the recovered wallet:", QLineEdit::Password, "", &ok1);
+    if (!ok1) return;
+    
+    bool ok2 = false;
+    QString confirm = QInputDialog::getText(this, "Confirm Password", "Re-enter password:", QLineEdit::Password, "", &ok2);
+    if (!ok2 || confirm != password) {
+      QMessageBox::warning(this, "Password Mismatch", "Passwords do not match.");
+      return;
+    }
+
+    // Ask for mnemonic seed
+    QDialog* dialog = new QDialog(this);
+    dialog->setWindowTitle("Enter Mnemonic Seed");
+    dialog->setModal(true);
+    
+    QVBoxLayout* layout = new QVBoxLayout(dialog);
+    QLabel* label = new QLabel("Enter your 25-word mnemonic seed phrase:", dialog);
+    QTextEdit* mnemonicEdit = new QTextEdit(dialog);
+    mnemonicEdit->setPlaceholderText("Enter 25 words separated by spaces...");
+    mnemonicEdit->setMinimumHeight(100);
+    
+    QHBoxLayout* buttonLayout = new QHBoxLayout();
+    QPushButton* okBtn = new QPushButton("Recover", dialog);
+    QPushButton* cancelBtn = new QPushButton("Cancel", dialog);
+    buttonLayout->addWidget(okBtn);
+    buttonLayout->addWidget(cancelBtn);
+    
+    layout->addWidget(label);
+    layout->addWidget(mnemonicEdit);
+    layout->addLayout(buttonLayout);
+    
+    connect(okBtn, &QPushButton::clicked, dialog, &QDialog::accept);
+    connect(cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
+    
+    if (dialog->exec() != QDialog::Accepted) {
+      delete dialog;
+      return;
+    }
+    
+    QString mnemonic = mnemonicEdit->toPlainText().trimmed();
+    delete dialog;
+    
+    if (mnemonic.isEmpty()) {
+      QMessageBox::warning(this, "Invalid Seed", "Mnemonic seed cannot be empty.");
+      return;
+    }
+
+    // Ask for restore height (optional, default to 0 which scans from beginning)
+    bool ok3 = false;
+    QString heightStr = QInputDialog::getText(this, "Restore Height", 
+      "Enter block height to restore from (0 to scan from beginning):", 
+      QLineEdit::Normal, "0", &ok3);
+    
+    uint64_t restoreHeight = 0;
+    if (ok3 && !heightStr.isEmpty()) {
+      restoreHeight = heightStr.toULongLong(&ok3);
+      if (!ok3) {
+        QMessageBox::warning(this, "Invalid Height", "Restore height must be a valid number.");
+        return;
+      }
+    }
+
+    // Show progress
+    QMessageBox::information(this, "Recovering Wallet", 
+      "Recovering wallet from seed phrase. This may take a few moments...");
+
+    // Use wallet manager to recover
+    bool success = m_walletManager->recoverWallet(password, walletPath, mnemonic, restoreHeight);
+    
+    if (!success) {
+      QMessageBox::critical(this, "Recovery Failed", "Failed to recover wallet: " + mnemonic);
+      return;
+    }
+
+    // Update UI
+    m_hasWallet = true;
+    m_walletAddress = m_walletManager->getAddress();
+    m_walletAddressDisplay->setText(m_walletAddress);
+    m_copyAddressBtn->setEnabled(true);
+    m_rescanWalletBtn->setEnabled(true);
+    m_showPrivateKeyBtn->setEnabled(true);
+    
+    // Save wallet path
+    QSettings settings("QSFCoin", "QuantumSafeWallet");
+    settings.setValue("wallet_path", walletPath);
+    
+    QMessageBox::information(this, "Wallet Recovered", 
+      "Wallet successfully recovered!\n\nAddress: " + m_walletAddress + 
+      "\n\nRescanning blockchain to update balance...");
   }
 
   void MainWindow::onCopyAddress()

@@ -22,6 +22,7 @@ public:
     // Wallet operations
     bool createWallet(const QString& password, const QString& walletPath);
     bool openWallet(const QString& walletPath, const QString& password);
+    bool recoverWallet(const QString& password, const QString& walletPath, const QString& mnemonic, uint64_t restoreHeight = 0);
     void closeWallet();
     
     // Wallet info
