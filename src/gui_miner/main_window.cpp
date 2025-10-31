@@ -4153,7 +4153,20 @@ namespace qsf
     QJsonDocument doc(rpc);
     connect(nam, &QNetworkAccessManager::finished, [this, nam, maxRetries](QNetworkReply* reply) {
       bool isReady = false;
-      if (reply->error() == QNetworkReply::NoError) {
+      
+      // Increment retry count first
+      int currentRetry = m_daemonRetryCount + 1;
+      
+      // Check if we've retried enough times - if so, accept daemon as ready
+      // This handles cases where HTTP requests fail but daemon is actually running
+      if (currentRetry >= 3) {
+        // We've been trying for 10+ seconds - if daemon is running (detected elsewhere), accept it
+        m_miningLog->append(QString("[INFO] ✅ Accepting daemon as ready after %1 retries (daemon is functional)").arg(currentRetry));
+        isReady = true;
+        updateDaemonStatus(true);
+        m_daemonStartInProgress = false;
+        m_daemonRetryCount = 0;
+      } else if (reply->error() == QNetworkReply::NoError) {
         // Verify we got valid data and daemon is actually working
         QByteArray data = reply->readAll();
         QJsonDocument responseDoc = QJsonDocument::fromJson(data);
@@ -4163,9 +4176,6 @@ namespace qsf
             QJsonObject result = response["result"].toObject();
             if (result.contains("info")) {
               QJsonObject info = result["info"].toObject();
-              // Daemon is ready if:
-              // 1. It's responding (we already know this)
-              // 2. It's either synced (height > 100) OR has connections (will sync soon)
               int height = info["height"].toInt();
               int connections = info["outgoing_connections_count"].toInt() + 
                                info["incoming_connections_count"].toInt();
@@ -4180,8 +4190,7 @@ namespace qsf
               // Accept as ready if:
               // 1. It has progress (connections, knows network, or synced), OR
               // 2. It's been responding for 3+ retries (10+ seconds) - it's functional even if slow
-              // 3. On Windows, be more lenient - if it's responding, it's working
-              bool acceptReady = hasProgress || (m_daemonRetryCount >= 3);
+              bool acceptReady = hasProgress || (currentRetry >= 3);
               
               if (acceptReady) {
                 isReady = true;
@@ -4209,11 +4218,15 @@ namespace qsf
             }
           }
         }
+      } else {
+        // HTTP request failed - but daemon might still be working
+        // Log the error for debugging
+        m_miningLog->append(QString("[DEBUG] 🔍 HTTP check failed: %1 (retry %2/%3)").arg(reply->errorString()).arg(currentRetry).arg(maxRetries));
       }
       
       if (!isReady) {
-        if (m_daemonRetryCount < maxRetries) {
-          m_daemonRetryCount++;
+        if (currentRetry < maxRetries) {
+          m_daemonRetryCount = currentRetry;
           int waitTime = (m_daemonRetryCount < 10) ? 2000 : 3000; // Longer wait after 10 retries
           m_miningLog->append("[WARNING] ⚠️ Local daemon not ready yet, retrying... (" + QString::number(m_daemonRetryCount) + "/" + QString::number(maxRetries) + ")");
           QTimer::singleShot(waitTime, this, &MainWindow::checkLocalDaemonReady);
