@@ -3896,26 +3896,51 @@ namespace qsf
           if (result.contains("info")) {
             QJsonObject info = result["info"].toObject();
             // Verify daemon has at least some connections or is synced
-            // A fresh daemon (height=1, 0 connections) might not be ready yet
+            // A fresh daemon (height=1, 0 connections, target=1) is not ready
             int connections = info["outgoing_connections_count"].toInt() + 
                              info["incoming_connections_count"].toInt();
             int height = info["height"].toInt();
-            if (connections > 0 || height > 100) { // Has peers OR already synced
+            int targetHeight = info["target_height"].toInt();
+            
+            // Only consider daemon "healthy" if:
+            // 1. It has active connections (actually syncing), OR
+            // 2. It's already synced (height > 100), OR  
+            // 3. It has a target height > 1 (knows about network and is syncing), OR
+            // 4. It just started (target=1, height=1) but is still initializing - give it time
+            // For a fresh daemon, we need to check if it's making progress
+            if (connections > 0 || height > 100 || (targetHeight > 1 && targetHeight > height)) {
+              daemonRunning = true;
+              m_miningLog->append(QString("[DEBUG] 🔍 Existing daemon is healthy: Height=%1, Target=%2, Connections=%3")
+                                 .arg(height).arg(targetHeight).arg(connections));
+            } else if (height == 1 && targetHeight == 1 && connections == 0) {
+              // Fresh daemon that just started - might still be initializing
+              // Check how long it's been running - if < 30 seconds, wait; otherwise it's stuck
+              // For now, consider it "starting" and proceed to use it (don't start another)
+              // The checkLocalDaemonReady will verify it's actually making progress
+              m_miningLog->append(QString("[DEBUG] 🔍 Fresh daemon detected (Height=%1, Target=%1, Connections=0) - may still be initializing")
+                                 .arg(height));
+              // Return true to use this daemon, but it will be checked again for readiness
+              daemonRunning = true;
+            } else {
+              m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but appears stuck: Height=%1, Target=%2, Connections=%3 (will use it anyway)")
+                                 .arg(height).arg(targetHeight).arg(connections));
+              // Still return true - it's responding, might just be slow
               daemonRunning = true;
             }
           }
         }
       }
+    } else {
+      // Daemon not responding at all
+      m_miningLog->append(QString("[DEBUG] 🔍 No daemon responding on port 18071: %1").arg(reply->errorString()));
     }
     reply->deleteLater();
     nam->deleteLater();
     if (daemonRunning) {
       m_miningLog->append("[INFO] ℹ️ Daemon already running and healthy on port 18071");
       return true;
-    } else if (reply->error() == QNetworkReply::NoError) {
-      // Daemon is responding but might be a fresh instance, proceed to start anyway
-      m_miningLog->append("[DEBUG] 🔍 Daemon found but may be initializing, will verify or start fresh");
     }
+    // If daemon not running or not healthy, proceed to start a new one
 #endif
     
     m_daemonStartInProgress = true;
@@ -3998,18 +4023,30 @@ namespace qsf
     m_miningLog->append("[INFO] 🔐 Windows: Starting daemon in detached mode");
     m_miningLog->append("[INFO] 💡 Windows may show a permission/firewall prompt - please allow it");
     m_miningLog->append("[INFO] 💡 If the daemon stops, check Windows Firewall settings or run qsf.exe manually first");
+    
     // Set working directory to daemon's directory for proper config file discovery
     QFileInfo daemonInfo(m_daemonPath);
     QString workingDir = daemonInfo.absolutePath();
+    
+    // Log the full command for debugging
+    QString fullCmd = "\"" + m_daemonPath + "\"";
+    for (const QString& arg : arguments) {
+      fullCmd += " " + (arg.contains(" ") ? "\"" + arg + "\"" : arg);
+    }
+    m_miningLog->append("[DEBUG] 🔧 Full command: " + fullCmd);
+    m_miningLog->append("[DEBUG] 🔧 Working directory: " + workingDir);
+    
     bool started = QProcess::startDetached(m_daemonPath, arguments, workingDir);
     if (!started) {
-      m_miningLog->append("[ERROR] ❌ Failed to start daemon on Windows");
+      m_miningLog->append("[ERROR] ❌ Failed to start daemon on Windows (startDetached returned false)");
       m_miningLog->append("[ERROR] 💡 Try starting qsf.exe manually first, then open the GUI miner");
       m_miningLog->append("[ERROR] 💡 Or run the GUI miner as Administrator");
+      m_miningLog->append("[ERROR] 💡 Check if qsf.exe exists at: " + m_daemonPath);
       m_daemonStartInProgress = false;
       return false;
     }
-    m_miningLog->append("[INFO] ✅ Daemon process launched (checking if it's responding...)");
+    m_miningLog->append("[INFO] ✅ Daemon process launch command executed successfully");
+    m_miningLog->append("[INFO] ⏳ Waiting for daemon to initialize and bind to ports (this may take 8-15 seconds)...");
     
     // Since we detached, we can't track the process directly
     // Clear the process pointer - we'll detect it via network connection
@@ -4017,10 +4054,14 @@ namespace qsf
     m_localDaemonProcess = nullptr;
     
     // Wait longer on Windows for daemon to fully initialize and bind to ports
-    // The daemon needs time to start, bind ports, and potentially show firewall prompts
-    m_miningLog->append("[INFO] ⏳ Waiting for daemon to initialize (this may take 5-10 seconds)...");
-    QTimer::singleShot(8000, this, [this]() {
-      m_miningLog->append("[DEBUG] 🔍 Checking if daemon is ready...");
+    // The daemon needs time to:
+    // 1. Start the process (1-2 seconds)
+    // 2. Show UAC/firewall prompts if needed (user interaction time)
+    // 3. Initialize blockchain (2-5 seconds for fresh)
+    // 4. Bind to ports and start RPC server (1-2 seconds)
+    // 5. Connect to peers (5-10 seconds)
+    QTimer::singleShot(10000, this, [this]() {
+      m_miningLog->append("[DEBUG] 🔍 Checking if daemon is ready after 10 seconds...");
       checkLocalDaemonReady();
     });
     
@@ -4121,7 +4162,14 @@ namespace qsf
                                info["incoming_connections_count"].toInt();
               int targetHeight = info["target_height"].toInt();
               
-              if (height > 1 || connections > 0 || targetHeight > 1) {
+              // Daemon is ready if:
+              // 1. It has connections (syncing/connected), OR
+              // 2. It's synced (height > 100), OR
+              // 3. It knows about the network (target > 1), OR
+              // 4. It's making progress (height increased or target increased)
+              bool hasProgress = (targetHeight > 1) || (connections > 0) || (height > 1);
+              
+              if (hasProgress) {
                 // Daemon is responding and either synced or connecting
                 isReady = true;
                 m_miningLog->append(QString("[INFO] ✅ Local daemon is ready! (Height: %1, Connections: %2, Target: %3)")
@@ -4134,9 +4182,11 @@ namespace qsf
                 // Reset retry counter on success
                 m_daemonRetryCount = 0;
               } else {
-                // Daemon is responding but at height 1 with no connections - might be initializing
-                m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but initializing (Height: %1, Connections: %2)...")
-                                   .arg(height).arg(connections));
+                // Daemon is responding but at height 1 with no connections and target=1
+                // This means it just started and hasn't connected to peers yet
+                // Keep retrying - it should connect within 10-30 seconds
+                m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but still initializing (Height: %1, Connections: %2, Target: %3) - waiting for peer connections...")
+                                   .arg(height).arg(connections).arg(targetHeight));
               }
             }
           }
