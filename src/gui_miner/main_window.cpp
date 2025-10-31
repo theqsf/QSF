@@ -2721,6 +2721,7 @@ namespace qsf
     ensureLocalConfigExists();
     
     // Strategy 1: Try to connect to existing daemon first (most common case)
+    m_miningLog->append("[DEBUG] 🔍 Checking for existing daemon...");
     if (detectAndHandleExistingDaemon()) {
       m_miningLog->append("[INFO] ✅ Connected to existing local daemon");
       m_daemonUrlEdit->setText("http://127.0.0.1:18071");
@@ -2729,6 +2730,8 @@ namespace qsf
       m_connectionLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
       return;
     }
+    
+    m_miningLog->append("[DEBUG] 🔍 No existing daemon found, will start new daemon");
     
     // Strategy 2: Start our own local daemon only if no existing daemon is working
     if (!m_localDaemonProcess || m_localDaemonProcess->state() == QProcess::NotRunning) {
@@ -3552,7 +3555,7 @@ namespace qsf
           QTextStream s(&f);
           s << content;
           f.close();
-          if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + daemonConf);
+          if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + QDir::toNativeSeparators(daemonConf));
         }
       }
     } else if (!QFile::exists(daemonConf)) {
@@ -3563,11 +3566,11 @@ namespace qsf
         QTextStream s(&f);
         s << content;
         f.close();
-        if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + daemonConf);
+        if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + QDir::toNativeSeparators(daemonConf));
       }
     } else {
       // Config already exists, use it
-      if (m_miningLog) m_miningLog->append("[INFO] ℹ️ Using existing daemon config: " + daemonConf);
+      if (m_miningLog) m_miningLog->append("[INFO] ℹ️ Using existing daemon config: " + QDir::toNativeSeparators(daemonConf));
     }
     if (!QFile::exists(minerConf)) {
       QString content = generateMinerGuiConfig();
@@ -3690,7 +3693,10 @@ namespace qsf
       return true;
     }
     
-    // Only check for existing processes if we can't connect
+    // On Windows, just rely on network connection check (no process checking needed)
+    // On Linux, check for existing processes
+#ifndef Q_OS_WIN
+    // Only check for existing processes if we can't connect (Linux only)
     QProcess checkProcess;
     checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*18071|qsf.*18072|qsf.*18070");
     checkProcess.waitForFinished(1000);
@@ -3753,6 +3759,7 @@ namespace qsf
         }
       }
     }
+#endif
     
     return false; // No existing daemon found or connected
   }
@@ -3764,6 +3771,7 @@ namespace qsf
     if (url.path().isEmpty()) url.setPath("/json_rpc");
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setTransferTimeout(2000); // 2 second timeout for faster detection
     
     QJsonObject rpc;
     rpc["jsonrpc"] = "2.0";
@@ -3775,14 +3783,31 @@ namespace qsf
     QNetworkReply* reply = nam->post(req, doc.toJson());
     
     QEventLoop loop;
-    connect(nam, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
-    
-    QTimer::singleShot(3000, &loop, &QEventLoop::quit); // 3 second timeout
+    QTimer timeout;
+    timeout.setSingleShot(true);
+    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(2000); // 2 second timeout
     loop.exec();
     
-    bool success = (reply->error() == QNetworkReply::NoError);
-    if (success) {
-      m_miningLog->append("[INFO] ✅ Found existing local daemon");
+    bool success = false;
+    if (reply->error() == QNetworkReply::NoError) {
+      // Verify we got a valid response
+      QByteArray data = reply->readAll();
+      QJsonDocument responseDoc = QJsonDocument::fromJson(data);
+      if (!responseDoc.isNull() && responseDoc.isObject()) {
+        QJsonObject response = responseDoc.object();
+        if (response.contains("result") || response.contains("jsonrpc")) {
+          success = true;
+          m_miningLog->append("[INFO] ✅ Found existing local daemon (verified with get_info)");
+        }
+      }
+    } else {
+      // Log the specific error for debugging
+      QNetworkReply::NetworkError error = reply->error();
+      if (error != QNetworkReply::OperationCanceledError && error != QNetworkReply::TimeoutError) {
+        m_miningLog->append("[DEBUG] 🔍 Daemon connection check failed: " + reply->errorString());
+      }
     }
     
     reply->deleteLater();
