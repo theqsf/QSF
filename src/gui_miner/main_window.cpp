@@ -76,6 +76,7 @@
 #include <QDebug> // Added for qDebug
 #include <QCoreApplication> // Added for QCoreApplication::applicationDirPath()
 #include <QFile> // Added for QFile::exists()
+#include <QFileInfo>
 #include <QDir>
 #include <QTextStream>
 #include <QEventLoop>
@@ -162,7 +163,7 @@ namespace qsf
       }
     }
     
-    // Generate local config path
+    // Generate local config path - prefer default config that works when run manually
     #ifdef Q_OS_WIN
         QString baseDir = QString::fromWCharArray(_wgetenv(L"PROGRAMDATA"));
         if (baseDir.isEmpty()) baseDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
@@ -170,8 +171,12 @@ namespace qsf
     #else
         QString baseDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation";
     #endif
+    
+    // Prefer using the default config file if it exists (same one used when running manually)
+    QString defaultConfig = baseDir + "/qsf.conf";
     if (m_currentNetwork == qsf::MAINNET) {
-        m_localConfigPath = baseDir + "/qsf.local.conf";
+        // Use default config if it exists, otherwise use local config
+        m_localConfigPath = QFile::exists(defaultConfig) ? defaultConfig : (baseDir + "/qsf.local.conf");
     } else {
         m_localConfigPath = baseDir + "/testnet/qsf.testnet.conf";
     }
@@ -353,8 +358,32 @@ namespace qsf
     connect(m_miningThread, &QThread::started, m_miningWorker.get(), &MiningWorker::startMining);
     connect(m_miningWorker.get(), &MiningWorker::miningStopped, m_miningThread, &QThread::quit);
     
-    // Check initial daemon status
-    QTimer::singleShot(1000, this, &MainWindow::checkDaemonStatus);
+    // Check initial daemon status and auto-start if needed
+    QTimer::singleShot(1500, [this]() {
+      // First do a quick synchronous check for running daemon process (Unix/Linux only)
+      bool daemonProcessFound = false;
+#ifndef Q_OS_WIN
+      QProcess checkProcess;
+      checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*18071|qsf.*18072|qsf.*18070");
+      checkProcess.waitForFinished(1000);
+      daemonProcessFound = (checkProcess.exitCode() == 0 && 
+                           !checkProcess.readAllStandardOutput().trimmed().isEmpty());
+      
+      if (daemonProcessFound) {
+        // Daemon process found on Linux, verify it's responding
+        m_miningLog->append("[INFO] 🔍 Daemon process detected, verifying connection...");
+        checkDaemonStatus();
+        return;
+      }
+#endif
+      
+      // No daemon process found (or on Windows), auto-start one
+      // onStartDaemon() will first try to connect to existing daemon, then start if needed
+      if (!m_daemonStartInProgress) {
+        m_miningLog->append("[INFO] 🔍 No daemon detected. Auto-starting local daemon...");
+        onStartDaemon();
+      }
+    });
     
     // Add daemon crash recovery
     connect(this, &MainWindow::daemonCrashed, this, [this]() {
@@ -3398,23 +3427,43 @@ namespace qsf
     return QString(
       "# QSF Daemon Configuration (Auto-generated)\n"
       "# This file was automatically created by the GUI miner\n\n"
+      "# RPC Settings\n"
       "rpc-bind-ip=127.0.0.1\n"
       "rpc-bind-port=18071\n"
+      "restricted-rpc=1\n"
+      "\n"
+      "# P2P Settings - must be public for peer connections\n"
       "p2p-bind-ip=0.0.0.0\n"
       "p2p-bind-port=18070\n"
+      "public-node=1\n"
+      "\n"
+      "# ZMQ Settings for mining\n"
       "zmq-rpc-bind-ip=0.0.0.0\n"
       "zmq-rpc-bind-port=18072\n"
       "zmq-pub=tcp://0.0.0.0:18073\n"
+      "\n"
+      "# Logging\n"
       "log-level=1\n"
+      "\n"
+      "# Performance\n"
       "max-concurrency=1\n"
-      "out-peers=8\n"
-      "in-peers=8\n"
+      "\n"
+      "# Connection stability settings - more peers for better sync reliability\n"
+      "out-peers=16\n"
+      "in-peers=16\n"
+      "limit-rate-up=8192\n"
+      "limit-rate-down=32768\n"
+      "\n"
+      "# Blockchain sync settings\n"
       "block-sync-size=2048\n"
       "db-sync-mode=fast:async:250000000\n"
       "prune-blockchain=1\n"
-      "igd=disabled\n"
+      "\n"
+      "# Network\n"
+      "no-igd=1\n"
       "hide-my-port=0\n"
-      "# Seed Nodes (using correct hostnames, not DNS SRV records)\n"
+      "\n"
+      "# Seed Nodes - priority connections for reliable sync\n"
       "add-priority-node=seeds.qsfchain.com:18070\n"
       "add-priority-node=seeds.qsfnetwork.co:18070\n"
       "add-priority-node=seeds.qsfcoin.org:18070\n"
@@ -3437,13 +3486,45 @@ namespace qsf
   }
 
   void MainWindow::ensureLocalConfigExists() {
+    // Use Windows-compatible config directory
+#ifdef Q_OS_WIN
+    QString configDir = QString::fromWCharArray(_wgetenv(L"PROGRAMDATA"));
+    if (configDir.isEmpty()) configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    configDir = QDir::toNativeSeparators(configDir) + "\\quantumsafefoundation";
+    QString daemonConf = m_localConfigPath.isEmpty() ? (QDir::toNativeSeparators(configDir + "\\qsf.local.conf")) : m_localConfigPath;
+    QString minerConf = QDir::toNativeSeparators(configDir + "\\miner.conf");
+#else
     QString configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation";
-    QString daemonConf = configDir + "/qsf.conf";
+    QString daemonConf = m_localConfigPath.isEmpty() ? (configDir + "/qsf.local.conf") : m_localConfigPath;
     QString minerConf = configDir + "/miner.conf";
+#endif
+    // Use the same config path that the daemon will use (matches m_localConfigPath)
     
-    QDir().mkpath(configDir);
+    QDir().mkpath(QFileInfo(daemonConf).absolutePath());
     
-    if (!QFile::exists(daemonConf)) {
+    // Check if default config exists and prefer it (may have user customizations)
+#ifdef Q_OS_WIN
+    QString defaultConf = QDir::toNativeSeparators(configDir + "\\qsf.conf");
+#else
+    QString defaultConf = configDir + "/qsf.conf";
+#endif
+    if (QFile::exists(defaultConf) && !QFile::exists(daemonConf)) {
+      // Copy default config to local config location
+      if (QFile::copy(defaultConf, daemonConf)) {
+        if (m_miningLog) m_miningLog->append("[INFO] ✅ Using existing config from: " + defaultConf);
+      } else {
+        // If copy fails, generate new config
+        QString content = generateDefaultConfig();
+        QFile f(daemonConf);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+          QTextStream s(&f);
+          s << content;
+          f.close();
+          if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + daemonConf);
+        }
+      }
+    } else if (!QFile::exists(daemonConf)) {
+      // No config exists, generate new one
       QString content = generateDefaultConfig();
       QFile f(daemonConf);
       if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -3452,6 +3533,9 @@ namespace qsf
         f.close();
         if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated daemon config: " + daemonConf);
       }
+    } else {
+      // Config already exists, use it
+      if (m_miningLog) m_miningLog->append("[INFO] ℹ️ Using existing daemon config: " + daemonConf);
     }
     if (!QFile::exists(minerConf)) {
       QString content = generateMinerGuiConfig();
@@ -3467,8 +3551,16 @@ namespace qsf
     loadMinerConfigFromFile();
   }
   void MainWindow::loadMinerConfigFromFile() {
+    // Use Windows-compatible config directory
+#ifdef Q_OS_WIN
+    QString configDir = QString::fromWCharArray(_wgetenv(L"PROGRAMDATA"));
+    if (configDir.isEmpty()) configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    configDir = QDir::toNativeSeparators(configDir) + "\\quantumsafefoundation";
+    QString configPath = QDir::toNativeSeparators(configDir + "\\miner.conf");
+#else
     QString configDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation";
     QString configPath = configDir + "/miner.conf";
+#endif
     QFile file(configPath);
     if (!file.exists()) return;
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) return;
@@ -3708,17 +3800,56 @@ namespace qsf
     m_localDaemonProcess = new QProcess(this);
     m_localDaemonProcess->setProgram(m_daemonPath);
     
-    // Set up daemon arguments with proper port configuration and ZMQ enabled
+    // Don't set working directory - let daemon use default behavior
+    // This ensures it behaves the same as when run manually
+    
+    // Set up daemon arguments - match manual run behavior (no flags = use defaults)
     QStringList arguments;
-    arguments << "--config-file" << m_localConfigPath;
-    arguments << "--rpc-bind-port" << QString::number(m_localRpcPort);
-    arguments << "--p2p-bind-port" << QString::number(m_localP2pPort);
-    arguments << "--zmq-rpc-bind-ip" << "127.0.0.1";
-    arguments << "--zmq-rpc-bind-port" << QString::number(m_localZmqPort);
-    arguments << "--zmq-pub" << QString("tcp://127.0.0.1:%1").arg(m_localZmqPort+1);
-    arguments << "--confirm-external-bind";
-    arguments << "--log-level" << "1";
+    
+    // Only specify --config-file if using a non-default location
+    // When using default location, let daemon auto-discover it
+    // This matches the behavior when you run "./qsf" or "./qsf.exe" with no flags
+    QString defaultConfigPath;
+#ifdef Q_OS_WIN
+    QString baseDir = QString::fromWCharArray(_wgetenv(L"PROGRAMDATA"));
+    if (baseDir.isEmpty()) baseDir = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    baseDir = QDir::toNativeSeparators(baseDir) + "\\quantumsafefoundation";
+    defaultConfigPath = QDir::toNativeSeparators(baseDir + "\\qsf.conf");
+#else
+    defaultConfigPath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation) + "/.quantumsafefoundation/qsf.conf";
+#endif
+    QFileInfo configInfo(m_localConfigPath);
+    QString absoluteConfigPath = QDir::toNativeSeparators(configInfo.absoluteFilePath());
+    QString normalizedDefaultPath = QDir::toNativeSeparators(defaultConfigPath);
+    
+    // Compare using canonical paths to handle Windows path case sensitivity
+    if (QFileInfo(absoluteConfigPath).canonicalFilePath() != QFileInfo(normalizedDefaultPath).canonicalFilePath()) {
+      // Using non-default config, explicitly specify it
+      arguments << "--config-file" << absoluteConfigPath;
+      m_miningLog->append("[DEBUG] 🔧 Using non-default config: " + absoluteConfigPath);
+    } else {
+      // Using default config location - let daemon auto-discover (matches manual "./qsf" behavior)
+      m_miningLog->append("[DEBUG] 🔧 Using default config (auto-discovered): " + absoluteConfigPath);
+    }
+    
+    // Explicitly set network type to prevent any confusion
+    if (m_currentNetwork == qsf::TESTNET) {
+      arguments << "--testnet";
+    } else if (m_currentNetwork == qsf::STAGENET) {
+      arguments << "--stagenet";
+    }
+    // MAINNET is default, no flag needed
+    
+    // Only override essential settings not in config file
+    arguments << "--non-interactive";  // Required when running as child process (no TTY)
+    // Let config file handle ports and other settings to avoid conflicts
     // Do not detach - we want to capture output and track lifecycle
+    
+    // Log the exact command being run for debugging
+    QString cmdLine = m_daemonPath + " " + arguments.join(" ");
+    m_miningLog->append("[DEBUG] 🔧 Starting daemon with command: " + cmdLine);
+    m_miningLog->append("[DEBUG] 🔧 Config file will be: " + absoluteConfigPath);
+    m_miningLog->append("[DEBUG] 🔧 Config exists: " + QString(QFile::exists(absoluteConfigPath) ? "YES" : "NO"));
     
     // Add mining parameters if wallet address is available
     if (!m_walletAddress.isEmpty() && m_miningThreads > 0) {
