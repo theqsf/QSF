@@ -1329,11 +1329,7 @@ namespace qsf
 
   void MainWindow::checkDaemonStatus()
   {
-#ifdef Q_OS_WIN
-    // On Windows with detached process, we can't check process state directly
-    // Verify via network connection and auto-restart if stopped
-    // This handles the case where daemon crashes or stops after being started
-#else
+    // Same approach on both Windows and Linux - check process state directly
     // First check if our local daemon process is still running
     if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
       m_daemonRunning = true;
@@ -1350,7 +1346,6 @@ namespace qsf
       emit daemonCrashed();
       return;
     }
-#endif
     
     // Check if daemon is actually responding via HTTP
     if (m_daemonRunning) {
@@ -1380,22 +1375,6 @@ namespace qsf
             m_miningLog->append("[WARNING] Daemon not responding via HTTP, updating status to stopped.");
             m_daemonRunning = false;
             onDaemonStatusChanged(false);
-            
-#ifdef Q_OS_WIN
-            // On Windows, if we were running a local daemon and it stopped, try to restart it
-            // Wait a bit before restarting to avoid rapid restart loops
-            static qint64 lastRestartAttempt = 0;
-            qint64 now = QDateTime::currentMSecsSinceEpoch();
-            if (now - lastRestartAttempt > 10000) { // Only restart if last attempt was > 10 seconds ago
-              lastRestartAttempt = now;
-              m_miningLog->append("[INFO] 🔄 Attempting to restart local daemon on Windows...");
-              QTimer::singleShot(3000, this, [this]() {
-                if (!m_daemonStartInProgress && !m_daemonRunning) {
-                  onStartDaemon();
-                }
-              });
-            }
-#endif
           }
         }
         reply->deleteLater();
@@ -2784,33 +2763,7 @@ namespace qsf
       onStopMining();
     }
 
-#ifdef Q_OS_WIN
-    // On Windows, if we started the daemon detached, we need to find and kill it
-    // Use taskkill to find qsf.exe processes listening on port 18071
-    m_miningLog->append("[INFO] 🛑 Stopping daemon on Windows...");
-    QProcess killProcess;
-    killProcess.start("taskkill", QStringList() << "/F" << "/IM" << "qsf.exe");
-    killProcess.waitForFinished(3000);
-    if (killProcess.exitCode() == 0) {
-      m_miningLog->append("[INFO] ✅ Daemon process stopped");
-    } else {
-      QString output = killProcess.readAllStandardOutput();
-      QString error = killProcess.readAllStandardError();
-      if (output.contains("not found") || error.contains("not found")) {
-        m_miningLog->append("[INFO] ℹ️ No daemon process found to stop");
-      } else {
-        m_miningLog->append("[WARNING] ⚠️ Could not stop daemon: " + error);
-        m_miningLog->append("[INFO] 💡 You may need to stop qsf.exe manually from Task Manager");
-      }
-    }
-    
-    // Clear process reference on Windows
-    if (m_localDaemonProcess) {
-      m_localDaemonProcess->deleteLater();
-      m_localDaemonProcess = nullptr;
-    }
-#else
-    // Stop only the daemon we started (avoid killing system-wide services)
+    // Stop only the daemon we started (same approach on Windows and Linux)
     if (m_localDaemonProcess && m_localDaemonProcess->state() != QProcess::NotRunning) {
       m_miningLog->append("[INFO] 🛑 Terminating local daemon process...");
       m_localDaemonProcess->terminate();
@@ -2842,19 +2795,6 @@ namespace qsf
       if (m_walletStatusLabel) {
         m_walletStatusLabel->setText("❌ No Daemon");
         m_walletStatusLabel->setStyleSheet("color: #ff6b6b; font-weight: bold; font-size: 12px;");
-      }
-    }
-    
-    // Also check if there are any external daemons running
-    QProcess checkProcess;
-    checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*daemon|qsf.*rpc|qsf.*18071|qsf.*18081");
-    checkProcess.waitForFinished(1000);
-    
-    if (checkProcess.exitCode() == 0) {
-      QString output = checkProcess.readAllStandardOutput().trimmed();
-      if (!output.isEmpty()) {
-        m_miningLog->append("[INFO] ℹ️ External daemon processes still running (PIDs: " + output + ")");
-        m_miningLog->append("[INFO] 💡 These are not controlled by this GUI instance");
       }
     }
   }
@@ -3855,8 +3795,15 @@ namespace qsf
       return false;
     }
     
-    // Check if daemon is already running on expected ports
+    // Check if daemon is already running - use process check on Linux, network check on Windows
+    // But since we now use attached process on both, we can check our own process
+    if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
+      m_miningLog->append("[INFO] ℹ️ Local daemon process already running");
+      return true;
+    }
+    
 #ifndef Q_OS_WIN
+    // On Linux, also check for external daemon processes
     QProcess checkProcess;
     checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*18071|qsf.*18072|qsf.*18070");
     checkProcess.waitForFinished(1000);
@@ -3869,84 +3816,6 @@ namespace qsf
         return true;
       }
     }
-#else
-    // On Windows, check if daemon is already running by trying to connect to RPC
-    // BUT verify it's actually working properly (not just responding)
-    QNetworkAccessManager* nam = new QNetworkAccessManager(this);
-    QNetworkRequest req(QUrl("http://127.0.0.1:18071/json_rpc"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    req.setTransferTimeout(2000);
-    QJsonObject rpc;
-    rpc["jsonrpc"] = "2.0";
-    rpc["id"] = "0";
-    rpc["method"] = "get_info";
-    rpc["params"] = QJsonObject();
-    QNetworkReply* reply = nam->post(req, QJsonDocument(rpc).toJson());
-    QEventLoop loop;
-    QTimer timeout;
-    timeout.setSingleShot(true);
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
-    timeout.start(2000);
-    loop.exec();
-    
-    bool daemonRunning = false;
-    if (reply->error() == QNetworkReply::NoError) {
-      // Verify we got a valid response with actual data
-      QByteArray data = reply->readAll();
-      QJsonDocument responseDoc = QJsonDocument::fromJson(data);
-      if (!responseDoc.isNull() && responseDoc.isObject()) {
-        QJsonObject response = responseDoc.object();
-        if (response.contains("result")) {
-          QJsonObject result = response["result"].toObject();
-          if (result.contains("info")) {
-            QJsonObject info = result["info"].toObject();
-            // Verify daemon has at least some connections or is synced
-            // A fresh daemon (height=1, 0 connections, target=1) is not ready
-            int connections = info["outgoing_connections_count"].toInt() + 
-                             info["incoming_connections_count"].toInt();
-            int height = info["height"].toInt();
-            int targetHeight = info["target_height"].toInt();
-            
-            // Only consider daemon "healthy" if:
-            // 1. It has active connections (actually syncing), OR
-            // 2. It's already synced (height > 100), OR  
-            // 3. It has a target height > 1 (knows about network and is syncing), OR
-            // 4. It just started (target=1, height=1) but is still initializing - give it time
-            // For a fresh daemon, we need to check if it's making progress
-            if (connections > 0 || height > 100 || (targetHeight > 1 && targetHeight > height)) {
-              daemonRunning = true;
-              m_miningLog->append(QString("[DEBUG] 🔍 Existing daemon is healthy: Height=%1, Target=%2, Connections=%3")
-                                 .arg(height).arg(targetHeight).arg(connections));
-            } else if (height == 1 && targetHeight == 1 && connections == 0) {
-              // Fresh daemon that just started - might still be initializing
-              // Check how long it's been running - if < 30 seconds, wait; otherwise it's stuck
-              // For now, consider it "starting" and proceed to use it (don't start another)
-              // The checkLocalDaemonReady will verify it's actually making progress
-              m_miningLog->append(QString("[DEBUG] 🔍 Fresh daemon detected (Height=%1, Target=%1, Connections=0) - may still be initializing")
-                                 .arg(height));
-              // Return true to use this daemon, but it will be checked again for readiness
-              daemonRunning = true;
-            } else {
-              m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but appears stuck: Height=%1, Target=%2, Connections=%3 (will use it anyway)")
-                                 .arg(height).arg(targetHeight).arg(connections));
-              // Still return true - it's responding, might just be slow
-              daemonRunning = true;
-            }
-          }
-        }
-      }
-    } else {
-      // Daemon not responding at all
-      m_miningLog->append(QString("[DEBUG] 🔍 No daemon responding on port 18071: %1").arg(reply->errorString()));
-    }
-    reply->deleteLater();
-    nam->deleteLater();
-    if (daemonRunning) {
-      m_miningLog->append("[INFO] ℹ️ Daemon already running and healthy on port 18071");
-      return true;
-    }
-    // If daemon not running or not healthy, proceed to start a new one
 #endif
     
     m_daemonStartInProgress = true;
@@ -4023,63 +3892,8 @@ namespace qsf
     m_localDaemonProcess->setArguments(arguments);
     m_localDaemonProcess->setProcessChannelMode(QProcess::MergedChannels);
     
-#ifdef Q_OS_WIN
-    // On Windows, use startDetached to allow the daemon to show UAC/Firewall prompts
-    // This is necessary because child processes can't show elevation prompts
-    m_miningLog->append("[INFO] 🔐 Windows: Starting daemon in detached mode");
-    m_miningLog->append("[INFO] 💡 Windows may show a permission/firewall prompt - please allow it");
-    m_miningLog->append("[INFO] 💡 If the daemon stops, check Windows Firewall settings or run qsf.exe manually first");
-    
-    // On Windows, use the same directory as the GUI miner (simplified, matches Linux)
-    // This ensures qsf.exe can find its DLLs and works the same as when run manually
-    QString appDir = QCoreApplication::applicationDirPath();
-    QString workingDir = QDir::toNativeSeparators(appDir);
-    
-    // Log the full command for debugging
-    QString fullCmd = "\"" + m_daemonPath + "\"";
-    for (const QString& arg : arguments) {
-      fullCmd += " " + (arg.contains(" ") ? "\"" + arg + "\"" : arg);
-    }
-    m_miningLog->append("[DEBUG] 🔧 Starting daemon from same folder as GUI miner");
-    m_miningLog->append("[DEBUG] 🔧 Full command: " + fullCmd);
-    m_miningLog->append("[DEBUG] 🔧 Working directory: " + workingDir);
-    m_miningLog->append("[DEBUG] 🔧 Daemon path: " + m_daemonPath);
-    
-    bool started = QProcess::startDetached(m_daemonPath, arguments, workingDir);
-    if (!started) {
-      m_miningLog->append("[ERROR] ❌ Failed to start daemon on Windows (startDetached returned false)");
-      m_miningLog->append("[ERROR] 💡 Try starting qsf.exe manually first, then open the GUI miner");
-      m_miningLog->append("[ERROR] 💡 Or run the GUI miner as Administrator");
-      m_miningLog->append("[ERROR] 💡 Check if qsf.exe exists at: " + m_daemonPath);
-      m_daemonStartInProgress = false;
-      return false;
-    }
-    m_miningLog->append("[INFO] ✅ Daemon process launch command executed successfully");
-    m_miningLog->append("[INFO] ⏳ Waiting for daemon to initialize and bind to ports (this may take 8-15 seconds)...");
-    
-    // Since we detached, we can't track the process directly
-    // Clear the process pointer - we'll detect it via network connection
-    m_localDaemonProcess->deleteLater();
-    m_localDaemonProcess = nullptr;
-    
-    // Wait longer on Windows for daemon to fully initialize and bind to ports
-    // The daemon needs time to:
-    // 1. Start the process (1-2 seconds)
-    // 2. Show UAC/firewall prompts if needed (user interaction time)
-    // 3. Initialize blockchain (2-5 seconds for fresh)
-    // 4. Bind to ports and start RPC server (1-2 seconds)
-    // 5. Connect to peers (5-10 seconds)
-    QTimer::singleShot(10000, this, [this]() {
-      m_miningLog->append("[DEBUG] 🔍 Checking if daemon is ready after 10 seconds...");
-      checkLocalDaemonReady();
-    });
-    
-    // Point GUI to local daemon URL
-    m_daemonUrl = QString("http://127.0.0.1:%1").arg(m_localRpcPort);
-    m_daemonUrlEdit->setText(m_daemonUrl);
-    return true;
-#else
-    // On Linux, keep process attached to capture output
+    // Use same approach on both Windows and Linux - attached process
+    // This matches the manual behavior and avoids sync issues
     connect(m_localDaemonProcess, &QProcess::readyRead, [this]() {
       const QByteArray out = m_localDaemonProcess->readAll();
       if (!out.isEmpty()) {
@@ -4125,7 +3939,6 @@ namespace qsf
       m_daemonRetryCount = 0; // Reset retry counter
       return false;
     }
-#endif
     
     // Point GUI to local daemon URL immediately
     m_daemonUrl = QString("http://127.0.0.1:%1").arg(m_localRpcPort);
@@ -4134,7 +3947,7 @@ namespace qsf
   }
 
   void MainWindow::checkLocalDaemonReady() {
-    const int maxRetries = 30; // Increased retries for Windows
+    const int maxRetries = 20; // Same as Linux
     
     QNetworkAccessManager* nam = new QNetworkAccessManager(this);
     QUrl url(m_daemonUrlEdit->text().trimmed());
