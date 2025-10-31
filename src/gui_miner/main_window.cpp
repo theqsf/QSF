@@ -4171,18 +4171,27 @@ namespace qsf
                                info["incoming_connections_count"].toInt();
               int targetHeight = info["target_height"].toInt();
               
-              // Daemon is ready if:
-              // 1. It has connections (syncing/connected), OR
-              // 2. It's synced (height > 100), OR
-              // 3. It knows about the network (target > 1), OR
-              // 4. It's making progress (height increased or target increased)
-              bool hasProgress = (targetHeight > 1) || (connections > 0) || (height > 1);
+              // Daemon is ready if it's responding to HTTP requests
+              // The fact that we got here means the daemon is running and responding
+              // If it's responding, it's functional - accept it as ready
+              // We'll let it sync in the background
+              bool hasProgress = (targetHeight > 1) || (connections > 0) || (height > 100);
               
-              if (hasProgress) {
-                // Daemon is responding and either synced or connecting
+              // Accept as ready if:
+              // 1. It has progress (connections, knows network, or synced), OR
+              // 2. It's been responding for 3+ retries (10+ seconds) - it's functional even if slow
+              // 3. On Windows, be more lenient - if it's responding, it's working
+              bool acceptReady = hasProgress || (m_daemonRetryCount >= 3);
+              
+              if (acceptReady) {
                 isReady = true;
-                m_miningLog->append(QString("[INFO] ✅ Local daemon is ready! (Height: %1, Connections: %2, Target: %3)")
-                                   .arg(height).arg(connections).arg(targetHeight));
+                if (hasProgress) {
+                  m_miningLog->append(QString("[INFO] ✅ Local daemon is ready! (Height: %1, Connections: %2, Target: %3)")
+                                     .arg(height).arg(connections).arg(targetHeight));
+                } else {
+                  m_miningLog->append(QString("[INFO] ✅ Local daemon is responding and functional (Height: %1, Connections: %2, Target: %3) - accepting as ready (daemon will sync in background)")
+                                     .arg(height).arg(connections).arg(targetHeight));
+                }
                 updateDaemonStatus(true);
                 
                 // Reset daemon start lock on success
@@ -4193,8 +4202,8 @@ namespace qsf
               } else {
                 // Daemon is responding but at height 1 with no connections and target=1
                 // This means it just started and hasn't connected to peers yet
-                // Keep retrying - it should connect within 10-30 seconds
-                m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but still initializing (Height: %1, Connections: %2, Target: %3) - waiting for peer connections...")
+                // Give it a few more tries
+                m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but still initializing (Height: %1, Connections: %2, Target: %3) - will accept after 3 retries...")
                                    .arg(height).arg(connections).arg(targetHeight));
               }
             }
