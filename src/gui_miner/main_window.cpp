@@ -128,7 +128,8 @@ namespace qsf
     , m_walletManager(new GuiWalletManager(this))
     , m_daemonRetryCount(0)
   {
-    // Find daemon path (platform-aware)
+    // Find daemon path - simplified: look in same directory as GUI miner (like Linux)
+    // This matches the user's expectation: qsf.exe and qsf-gui-miner.exe in the same folder
     QString daemonName;
 #ifdef Q_OS_WIN
     daemonName = "qsf.exe";
@@ -136,9 +137,13 @@ namespace qsf
     daemonName = "qsf";
 #endif
 
+    // First priority: same directory as GUI miner (simplest, matches Linux behavior)
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString sameDirPath = QDir::toNativeSeparators(appDir + "/" + daemonName);
+    
     QStringList possiblePaths = {
-      QCoreApplication::applicationDirPath() + "/" + daemonName,
-      QCoreApplication::applicationDirPath() + "/../" + daemonName
+      sameDirPath,  // Same directory - highest priority
+      QDir::toNativeSeparators(appDir + "/../" + daemonName)  // Parent directory (fallback)
 #ifndef Q_OS_WIN
       ,
       "/home/qsf/quantumsafefoundation/build/bin/" + daemonName,
@@ -149,14 +154,15 @@ namespace qsf
 
     for (const QString& path : possiblePaths) {
       if (QFile::exists(path)) {
-        m_daemonPath = path;
-        qDebug() << "Found daemon at:" << path;
+        m_daemonPath = QDir::toNativeSeparators(QFileInfo(path).canonicalFilePath());
+        qDebug() << "Found daemon at:" << m_daemonPath;
         break;
       }
     }
 
     if (m_daemonPath.isEmpty()) {
       qDebug() << "Warning: QSF daemon not found in standard locations";
+      qDebug() << "GUI miner directory:" << appDir;
       qDebug() << "Searched paths:";
       for (const QString& path : possiblePaths) {
         qDebug() << "  -" << path;
@@ -4024,17 +4030,20 @@ namespace qsf
     m_miningLog->append("[INFO] 💡 Windows may show a permission/firewall prompt - please allow it");
     m_miningLog->append("[INFO] 💡 If the daemon stops, check Windows Firewall settings or run qsf.exe manually first");
     
-    // Set working directory to daemon's directory for proper config file discovery
-    QFileInfo daemonInfo(m_daemonPath);
-    QString workingDir = daemonInfo.absolutePath();
+    // On Windows, use the same directory as the GUI miner (simplified, matches Linux)
+    // This ensures qsf.exe can find its DLLs and works the same as when run manually
+    QString appDir = QCoreApplication::applicationDirPath();
+    QString workingDir = QDir::toNativeSeparators(appDir);
     
     // Log the full command for debugging
     QString fullCmd = "\"" + m_daemonPath + "\"";
     for (const QString& arg : arguments) {
       fullCmd += " " + (arg.contains(" ") ? "\"" + arg + "\"" : arg);
     }
+    m_miningLog->append("[DEBUG] 🔧 Starting daemon from same folder as GUI miner");
     m_miningLog->append("[DEBUG] 🔧 Full command: " + fullCmd);
     m_miningLog->append("[DEBUG] 🔧 Working directory: " + workingDir);
+    m_miningLog->append("[DEBUG] 🔧 Daemon path: " + m_daemonPath);
     
     bool started = QProcess::startDetached(m_daemonPath, arguments, workingDir);
     if (!started) {
