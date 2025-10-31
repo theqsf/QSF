@@ -1325,7 +1325,8 @@ namespace qsf
   {
 #ifdef Q_OS_WIN
     // On Windows with detached process, we can't check process state directly
-    // Just verify via network connection
+    // Verify via network connection and auto-restart if stopped
+    // This handles the case where daemon crashes or stops after being started
 #else
     // First check if our local daemon process is still running
     if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
@@ -1373,6 +1374,22 @@ namespace qsf
             m_miningLog->append("[WARNING] Daemon not responding via HTTP, updating status to stopped.");
             m_daemonRunning = false;
             onDaemonStatusChanged(false);
+            
+#ifdef Q_OS_WIN
+            // On Windows, if we were running a local daemon and it stopped, try to restart it
+            // Wait a bit before restarting to avoid rapid restart loops
+            static qint64 lastRestartAttempt = 0;
+            qint64 now = QDateTime::currentMSecsSinceEpoch();
+            if (now - lastRestartAttempt > 10000) { // Only restart if last attempt was > 10 seconds ago
+              lastRestartAttempt = now;
+              m_miningLog->append("[INFO] 🔄 Attempting to restart local daemon on Windows...");
+              QTimer::singleShot(3000, this, [this]() {
+                if (!m_daemonStartInProgress && !m_daemonRunning) {
+                  onStartDaemon();
+                }
+              });
+            }
+#endif
           }
         }
         reply->deleteLater();
@@ -3848,9 +3865,11 @@ namespace qsf
     }
 #else
     // On Windows, check if daemon is already running by trying to connect to RPC
+    // BUT verify it's actually working properly (not just responding)
     QNetworkAccessManager* nam = new QNetworkAccessManager(this);
     QNetworkRequest req(QUrl("http://127.0.0.1:18071/json_rpc"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setTransferTimeout(2000);
     QJsonObject rpc;
     rpc["jsonrpc"] = "2.0";
     rpc["id"] = "0";
@@ -3858,15 +3877,44 @@ namespace qsf
     rpc["params"] = QJsonObject();
     QNetworkReply* reply = nam->post(req, QJsonDocument(rpc).toJson());
     QEventLoop loop;
+    QTimer timeout;
+    timeout.setSingleShot(true);
     connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    QTimer::singleShot(2000, &loop, &QEventLoop::quit);
+    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
+    timeout.start(2000);
     loop.exec();
-    bool daemonRunning = (reply->error() == QNetworkReply::NoError);
+    
+    bool daemonRunning = false;
+    if (reply->error() == QNetworkReply::NoError) {
+      // Verify we got a valid response with actual data
+      QByteArray data = reply->readAll();
+      QJsonDocument responseDoc = QJsonDocument::fromJson(data);
+      if (!responseDoc.isNull() && responseDoc.isObject()) {
+        QJsonObject response = responseDoc.object();
+        if (response.contains("result")) {
+          QJsonObject result = response["result"].toObject();
+          if (result.contains("info")) {
+            QJsonObject info = result["info"].toObject();
+            // Verify daemon has at least some connections or is synced
+            // A fresh daemon (height=1, 0 connections) might not be ready yet
+            int connections = info["outgoing_connections_count"].toInt() + 
+                             info["incoming_connections_count"].toInt();
+            int height = info["height"].toInt();
+            if (connections > 0 || height > 100) { // Has peers OR already synced
+              daemonRunning = true;
+            }
+          }
+        }
+      }
+    }
     reply->deleteLater();
     nam->deleteLater();
     if (daemonRunning) {
-      m_miningLog->append("[INFO] ℹ️ Daemon already running on port 18071");
+      m_miningLog->append("[INFO] ℹ️ Daemon already running and healthy on port 18071");
       return true;
+    } else if (reply->error() == QNetworkReply::NoError) {
+      // Daemon is responding but might be a fresh instance, proceed to start anyway
+      m_miningLog->append("[DEBUG] 🔍 Daemon found but may be initializing, will verify or start fresh");
     }
 #endif
     
@@ -3968,8 +4016,11 @@ namespace qsf
     m_localDaemonProcess->deleteLater();
     m_localDaemonProcess = nullptr;
     
-    // Wait a bit then check if daemon started successfully
-    QTimer::singleShot(3000, this, [this]() {
+    // Wait longer on Windows for daemon to fully initialize and bind to ports
+    // The daemon needs time to start, bind ports, and potentially show firewall prompts
+    m_miningLog->append("[INFO] ⏳ Waiting for daemon to initialize (this may take 5-10 seconds)...");
+    QTimer::singleShot(8000, this, [this]() {
+      m_miningLog->append("[DEBUG] 🔍 Checking if daemon is ready...");
       checkLocalDaemonReady();
     });
     
@@ -4033,7 +4084,7 @@ namespace qsf
   }
 
   void MainWindow::checkLocalDaemonReady() {
-    const int maxRetries = 20;
+    const int maxRetries = 30; // Increased retries for Windows
     
     QNetworkAccessManager* nam = new QNetworkAccessManager(this);
     QUrl url(m_daemonUrlEdit->text().trimmed());
@@ -4041,6 +4092,7 @@ namespace qsf
     if (url.path().isEmpty()) url.setPath("/json_rpc");
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    req.setTransferTimeout(3000);
     
     QJsonObject rpc;
     rpc["jsonrpc"] = "2.0";
@@ -4050,22 +4102,56 @@ namespace qsf
     
     QJsonDocument doc(rpc);
     connect(nam, &QNetworkAccessManager::finished, [this, nam, maxRetries](QNetworkReply* reply) {
+      bool isReady = false;
       if (reply->error() == QNetworkReply::NoError) {
-        m_miningLog->append("[INFO] ✅ Local daemon is ready!");
-        updateDaemonStatus(true);
-        
-        // Reset daemon start lock on success
-        m_daemonStartInProgress = false;
-        
-        // Reset retry counter on success
-        m_daemonRetryCount = 0;
-      } else {
+        // Verify we got valid data and daemon is actually working
+        QByteArray data = reply->readAll();
+        QJsonDocument responseDoc = QJsonDocument::fromJson(data);
+        if (!responseDoc.isNull() && responseDoc.isObject()) {
+          QJsonObject response = responseDoc.object();
+          if (response.contains("result")) {
+            QJsonObject result = response["result"].toObject();
+            if (result.contains("info")) {
+              QJsonObject info = result["info"].toObject();
+              // Daemon is ready if:
+              // 1. It's responding (we already know this)
+              // 2. It's either synced (height > 100) OR has connections (will sync soon)
+              int height = info["height"].toInt();
+              int connections = info["outgoing_connections_count"].toInt() + 
+                               info["incoming_connections_count"].toInt();
+              int targetHeight = info["target_height"].toInt();
+              
+              if (height > 1 || connections > 0 || targetHeight > 1) {
+                // Daemon is responding and either synced or connecting
+                isReady = true;
+                m_miningLog->append(QString("[INFO] ✅ Local daemon is ready! (Height: %1, Connections: %2, Target: %3)")
+                                   .arg(height).arg(connections).arg(targetHeight));
+                updateDaemonStatus(true);
+                
+                // Reset daemon start lock on success
+                m_daemonStartInProgress = false;
+                
+                // Reset retry counter on success
+                m_daemonRetryCount = 0;
+              } else {
+                // Daemon is responding but at height 1 with no connections - might be initializing
+                m_miningLog->append(QString("[DEBUG] 🔍 Daemon responding but initializing (Height: %1, Connections: %2)...")
+                                   .arg(height).arg(connections));
+              }
+            }
+          }
+        }
+      }
+      
+      if (!isReady) {
         if (m_daemonRetryCount < maxRetries) {
           m_daemonRetryCount++;
+          int waitTime = (m_daemonRetryCount < 10) ? 2000 : 3000; // Longer wait after 10 retries
           m_miningLog->append("[WARNING] ⚠️ Local daemon not ready yet, retrying... (" + QString::number(m_daemonRetryCount) + "/" + QString::number(maxRetries) + ")");
-          QTimer::singleShot(2000, this, &MainWindow::checkLocalDaemonReady);
+          QTimer::singleShot(waitTime, this, &MainWindow::checkLocalDaemonReady);
         } else {
-          m_miningLog->append("[ERROR] ❌ Daemon did not become ready in time. Please check logs above.");
+          m_miningLog->append("[ERROR] ❌ Daemon did not become ready in time. Please check if qsf.exe is running and check Windows Firewall settings.");
+          m_miningLog->append("[ERROR] 💡 Try running qsf.exe manually first to ensure it works, then restart the GUI miner.");
           m_daemonStartInProgress = false; // Reset lock on failure
           m_daemonRetryCount = 0; // Reset retry counter
         }
