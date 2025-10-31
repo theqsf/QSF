@@ -366,14 +366,13 @@ namespace qsf
     
     // Check initial daemon status and auto-start if needed
     QTimer::singleShot(1500, [this]() {
-      // First do a quick synchronous check for running daemon process (Unix/Linux only)
-      bool daemonProcessFound = false;
+      // On Linux, do a quick check for running daemon process
 #ifndef Q_OS_WIN
       QProcess checkProcess;
       checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*18071|qsf.*18072|qsf.*18070");
       checkProcess.waitForFinished(1000);
-      daemonProcessFound = (checkProcess.exitCode() == 0 && 
-                           !checkProcess.readAllStandardOutput().trimmed().isEmpty());
+      bool daemonProcessFound = (checkProcess.exitCode() == 0 && 
+                                 !checkProcess.readAllStandardOutput().trimmed().isEmpty());
       
       if (daemonProcessFound) {
         // Daemon process found on Linux, verify it's responding
@@ -383,7 +382,7 @@ namespace qsf
       }
 #endif
       
-      // No daemon process found (or on Windows), auto-start one
+      // No daemon process found, auto-start one
       // onStartDaemon() will first try to connect to existing daemon, then start if needed
       if (!m_daemonStartInProgress) {
         m_miningLog->append("[INFO] 🔍 No daemon detected. Auto-starting local daemon...");
@@ -2780,7 +2779,6 @@ namespace qsf
     } else {
       m_miningLog->append("[INFO] ℹ️ No local daemon process owned by GUI");
     }
-#endif
     
     // Update status
     m_daemonRunning = false;
