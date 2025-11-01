@@ -3504,6 +3504,19 @@ namespace qsf
 #else
     QString defaultConf = configDir + "/qsf.conf";
 #endif
+    // Always ensure qsf.conf exists (for manual runs) - this is the default config file name
+    if (!QFile::exists(defaultConf)) {
+      QString content = generateDefaultConfig();
+      QFile f(defaultConf);
+      if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream s(&f);
+        s << content;
+        f.close();
+        if (m_miningLog) m_miningLog->append("[INFO] ✅ Auto-generated default daemon config: " + QDir::toNativeSeparators(defaultConf));
+      }
+    }
+    
+    // Also create/update local config if needed (for GUI-specific settings)
     if (QFile::exists(defaultConf) && !QFile::exists(daemonConf)) {
       // Copy default config to local config location
       if (QFile::copy(defaultConf, daemonConf)) {
@@ -3905,6 +3918,12 @@ namespace qsf
       
       // Reset retry counter when starting fresh
       m_daemonRetryCount = 0;
+      
+      // Unblock localhost if it was blocked (common issue after restart)
+      // Wait a bit for RPC server to be ready, then unblock
+      QTimer::singleShot(3000, [this]() {
+        unblockLocalhost();
+      });
       
       // Check if daemon is ready after a delay
       QTimer::singleShot(5000, this, &MainWindow::checkLocalDaemonReady);
@@ -4721,5 +4740,50 @@ add-priority-node=45.63.123.244:18070
       m_uptimeLabel->setText("00:00:00");
     }
     // Block reward display removed
+  }
+
+  void MainWindow::unblockLocalhost() {
+    // Unblock localhost (127.0.0.1) which sometimes gets blocked after daemon restarts
+    // This is a common issue on Windows when restarting the daemon
+    QNetworkAccessManager* nam = new QNetworkAccessManager(this);
+    QUrl url(QString("http://127.0.0.1:%1/json_rpc").arg(m_localRpcPort));
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    
+    QJsonObject rpc;
+    rpc["jsonrpc"] = "2.0";
+    rpc["id"] = "unblock";
+    rpc["method"] = "set_bans";
+    
+    QJsonObject banEntry;
+    banEntry["host"] = "127.0.0.1";
+    banEntry["ban"] = false;
+    banEntry["seconds"] = 0;
+    
+    QJsonArray bans;
+    bans.append(banEntry);
+    rpc["params"] = QJsonObject({{"bans", bans}});
+    
+    QJsonDocument doc(rpc);
+    QNetworkReply* reply = nam->post(req, doc.toJson());
+    
+    connect(reply, &QNetworkReply::finished, [this, nam, reply]() {
+      if (reply->error() == QNetworkReply::NoError) {
+        QByteArray data = reply->readAll();
+        QJsonDocument responseDoc = QJsonDocument::fromJson(data);
+        if (!responseDoc.isNull() && responseDoc.isObject()) {
+          QJsonObject response = responseDoc.object();
+          if (response.contains("result") && response["result"].toObject().contains("status")) {
+            QString status = response["result"].toObject()["status"].toString();
+            if (status == "OK") {
+              m_miningLog->append("[INFO] ✅ Unblocked localhost (127.0.0.1)");
+            }
+          }
+        }
+      }
+      // Don't log errors here - RPC might not be ready yet, which is fine
+      reply->deleteLater();
+      nam->deleteLater();
+    });
   }
 }

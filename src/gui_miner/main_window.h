@@ -306,5 +306,6 @@ namespace qsf
     double calculateCurrentBlockReward(uint64_t height, uint64_t alreadyGeneratedCoins);
     void updateMiningStatistics();
     void resetMiningStatistics();
+    void unblockLocalhost();
   };
 } 
