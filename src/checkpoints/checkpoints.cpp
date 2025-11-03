@@ -185,20 +185,20 @@ bool checkpoints::init_default_checkpoints(network_type nettype)
     if (nettype == TESTNET)
     {
       // ADD_CHECKPOINT2(0,     "33a1c1a08bca0cdddea88592a64d141f6a93ebe54bc9faeb3257b4332489d87b", "0x1");
-      ADD_CHECKPOINT2(1000001, "46b690b710a07ea051bc4a6b6842ac37be691089c0f7758cfeec4d5fc0b4a258", "0x7aaad7153");
-      ADD_CHECKPOINT2(1058601, "12904f6b4d9e60fd875674e07147d2c83d6716253f046af7b894c3e81da7e1bd", "0x971efd119");
-      ADD_CHECKPOINT2(1450001, "87562ca6786f41556b8d5b48067303a57dc5ca77155b35199aedaeca1550f5a0", "0xa639e2930e");
+      ADD_CHECKPOINT2(20000, "ed9e51f0b36b366a829b1cf2ad76bd375b440587ae3f96e0affcbeb8fa25f881", "0x7c72ab0");
       return true;
     }
     if (nettype == STAGENET)
     {
       // ADD_CHECKPOINT2(0,       "bed5654678026b44663f07324eaffbd8c81cf6b93c03079cce520b3d0df799c0", "0x1");
-      ADD_CHECKPOINT2(10001,   "a205a4b1bc25a43f97f9df013a2cdbedbe70d0a59ece70acb4a54425cf034121", "0x1c57c4d");
-      ADD_CHECKPOINT2(550001,  "409f68cddd8e74b37469b41c1e61250d81c5776b42264f416d5d27c4626383ed", "0x5f3d4d03e");
+      ADD_CHECKPOINT2(20000,   "ddc2da11923d2795d3300579bf28bca44b4d7fc1e709070fee12ca0d0887d074", "0x369a655");
       return true;
     }
     // ADD_CHECKPOINT2(0,     "a8f64ef03e55b2d8f448ef47ee47bd01cd706ae953e92bc8ab50be949cf34880", "0x1");
+    ADD_CHECKPOINT2(10,   "0b867b443c69c5f69f6fa5ecaff546c84e0ce771e9be00fd76ced06d407215a5", "0x8828");
     ADD_CHECKPOINT2(100,   "11246d57377f79c8d3362d92bcb93d2a9138465c2eca942a15a2ba5cc38f97ae", "0x37ec3");
+    ADD_CHECKPOINT2(1000,   "7af88996f2a6793d414a05b64333d929aae5313ebca9c58cb2038aa1fe52c45c", "0xfa69a");
+    ADD_CHECKPOINT2(10000,   "b3f49549ccb31a2f81c761c36553229a230403d7769ab8ba4b0879dece0b50bc", "0x17fcf83");
 
     return true;
    }

@@ -1,4 +1,4 @@
-// Copyright (c) 2024, The QSF Quantum-Safe Coin Project
+// Copyright (c) 2024, The QuantumSafeFoundation Project
 // 
 // All rights reserved.
 // 
@@ -404,7 +404,7 @@ namespace qsf
     });
     
     // Set window properties
-    setWindowTitle("QSF Quantum-Safe GUI Miner v2.0");
+    setWindowTitle("QSF Quantum-Safe GUI Miner v2.1");
     setMinimumSize(1000, 700);
     // Try to set window icon again with fallback paths
     QStringList fallbackIconPaths = {
@@ -1224,10 +1224,10 @@ namespace qsf
     QVBoxLayout* aboutLayout = new QVBoxLayout(aboutGroup);
     
     QLabel* aboutText = new QLabel(
-      "QSF Quantum-Safe Coin v2.0\n\n"
+      "QSF QuantumSafeFoundation v2.1\n\n"
       "A quantum-resistant cryptocurrency combining RandomX proof-of-work mining "
       "with XMSS/SPHINCS+ quantum-safe signatures.\n\n"
-      "© 2024 QSF Coin Project\n"
+      "© 2024 QSF QuantumSafeFoundation\n"
       "All rights reserved."
     );
     aboutText->setAlignment(Qt::AlignCenter);

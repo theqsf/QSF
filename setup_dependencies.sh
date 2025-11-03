@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# QSF Quantum-Safe Coin - Complete Setup Script
+# QSF Quantum-Safe Miner - Complete Setup Script
 # This script handles all dependencies, submodules, and build preparation
 
 set -e
 
 echo "=========================================="
-echo "QSF Quantum-Safe Coin - Complete Setup"
+echo "QSF Quantum-Safe Miner - Complete Setup"
 echo "=========================================="
 
 # Parse options

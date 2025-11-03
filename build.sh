@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# QSF Quantum-Safe Coin - Unified Build Script
+# QSF Quantum-Safe Miner - Unified Build Script
 # This script provides a simplified build process for all QSF components
 
 set -e
 
 echo "=========================================="
-echo "QSF Quantum-Safe Coin - Unified Build"
+echo "QSF Quantum-Safe Miner - Unified Build"
 echo "=========================================="
 
 # Check if we're in the right directory

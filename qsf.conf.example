@@ -1,4 +1,4 @@
-# QSF Quantum-Safe Coin - Production Configuration (Example)
+# QSF Quantum-Safe Miner - Production Configuration (Example)
 # Copy this file to qsf-mainnet.conf and edit for your environment.
 # Do NOT commit your real qsf-mainnet.conf to the repository.
 

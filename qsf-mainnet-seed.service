@@ -1,5 +1,5 @@
 [Unit]
-Description=QSF Quantum-Safe Coin Mainnet Seed Node
+Description=QSF Quantum-Safe Miner Mainnet Seed Node
 After=network.target
 Wants=network.target
 

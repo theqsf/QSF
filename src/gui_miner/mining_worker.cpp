@@ -1,4 +1,4 @@
-// Copyright (c) 2024, The QSF Quantum-Safe Coin Project
+// Copyright (c) 2024, QuantumSafeFoundation
 //
 // All rights reserved.
 //
