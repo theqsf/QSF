@@ -120,20 +120,48 @@ namespace crypto
     if (m_index >= m_max_signatures)
       return sig; // No more signatures available
     
-    // In a real implementation, this would create a proper XMSS signature
-    // For now, we'll create a simple signature structure
+    // SECURITY FIX: Create secure hash-based signature without exposing private key
+    // Use HMAC-like construction: H(priv_key || message || index) instead of raw private key
     std::vector<uint8_t> sig_data(SIGNATURE_SIZE);
     
-    // Combine message hash with private key and index
-    std::memcpy(sig_data.data(), &message, sizeof(crypto::hash));
-    std::memcpy(sig_data.data() + sizeof(crypto::hash), m_private_key.data(), KEY_SIZE);
-    std::memcpy(sig_data.data() + sizeof(crypto::hash) + KEY_SIZE, &m_index, sizeof(uint32_t));
+    // Create a secure signature hash that doesn't expose the private key
+    // Combine: private_key || message || index || seed
+    std::vector<uint8_t> signature_input;
+    signature_input.reserve(KEY_SIZE + sizeof(crypto::hash) + sizeof(uint32_t) + m_seed.size());
+    signature_input.insert(signature_input.end(), m_private_key.begin(), m_private_key.end());
+    signature_input.insert(signature_input.end(), reinterpret_cast<const uint8_t*>(&message), 
+                          reinterpret_cast<const uint8_t*>(&message) + sizeof(crypto::hash));
+    signature_input.insert(signature_input.end(), reinterpret_cast<const uint8_t*>(&m_index), 
+                          reinterpret_cast<const uint8_t*>(&m_index) + sizeof(uint32_t));
+    signature_input.insert(signature_input.end(), m_seed.begin(), m_seed.end());
     
-    // Fill remaining space with random data
-    generate_random_bytes_not_thread_safe(
-      SIGNATURE_SIZE - sizeof(crypto::hash) - KEY_SIZE - sizeof(uint32_t),
-      sig_data.data() + sizeof(crypto::hash) + KEY_SIZE + sizeof(uint32_t)
-    );
+    // Hash the combined input to create the signature (doesn't expose private key)
+    crypto::hash signature_hash;
+    crypto::cn_fast_hash(signature_input.data(), signature_input.size(), signature_hash);
+    
+    // Store the signature hash in the signature data
+    std::memcpy(sig_data.data(), &signature_hash, sizeof(crypto::hash));
+    std::memcpy(sig_data.data() + sizeof(crypto::hash), &message, sizeof(crypto::hash));
+    std::memcpy(sig_data.data() + sizeof(crypto::hash) * 2, &m_index, sizeof(uint32_t));
+    
+    // Fill remaining space with hash-based data (not random, deterministic but secure)
+    // Use iterative hashing to fill the remaining space
+    size_t offset = sizeof(crypto::hash) * 2 + sizeof(uint32_t);
+    size_t remaining = SIGNATURE_SIZE - offset;
+    crypto::hash temp_hash = signature_hash;
+    
+    for (size_t i = 0; i < remaining; i += sizeof(crypto::hash)) {
+      // Hash the previous hash with index to create next block
+      std::vector<uint8_t> hash_input;
+      hash_input.insert(hash_input.end(), reinterpret_cast<const uint8_t*>(&temp_hash), 
+                       reinterpret_cast<const uint8_t*>(&temp_hash) + sizeof(crypto::hash));
+      hash_input.insert(hash_input.end(), reinterpret_cast<const uint8_t*>(&i), 
+                       reinterpret_cast<const uint8_t*>(&i) + sizeof(size_t));
+      
+      crypto::cn_fast_hash(hash_input.data(), hash_input.size(), temp_hash);
+      size_t copy_size = std::min(remaining - i, static_cast<size_t>(sizeof(crypto::hash)));
+      std::memcpy(sig_data.data() + offset + i, &temp_hash, copy_size);
+    }
 
     // Serialize into the expected wire format and load to populate private members
     std::vector<uint8_t> serialized(SIGNATURE_SIZE + sizeof(uint32_t));
@@ -187,17 +215,37 @@ namespace crypto
 
   bool xmss_public_key::verify(const crypto::hash& message, const xmss_signature& signature) const
   {
-    // In a real implementation, this would verify the XMSS signature
-    // For now, we'll do a basic check
+    // SECURITY FIX: Verify signature format and message match
+    // Note: Full XMSS verification requires proper implementation
     const std::vector<uint8_t> serialized = signature.save();
     if (serialized.size() != xmss_signature::SIGNATURE_SIZE + sizeof(uint32_t))
       return false;
 
-    // Extract the message hash from signature
+    // Extract components from signature:
+    // - Signature hash (first HASH_SIZE bytes)
+    // - Message (next HASH_SIZE bytes)
+    // - Index (after SIGNATURE_SIZE)
+    crypto::hash sig_hash{};
     crypto::hash sig_message{};
-    std::memcpy(&sig_message, serialized.data(), sizeof(crypto::hash));
+    uint32_t sig_index = 0;
     
-    return sig_message == message;
+    std::memcpy(&sig_hash, serialized.data(), sizeof(crypto::hash));
+    std::memcpy(&sig_message, serialized.data() + sizeof(crypto::hash), sizeof(crypto::hash));
+    std::memcpy(&sig_index, serialized.data() + xmss_signature::SIGNATURE_SIZE, sizeof(uint32_t));
+    
+    // Verify message matches
+    if (sig_message != message)
+      return false;
+    
+    // Verify signature hash is not all zeros (basic sanity check)
+    crypto::hash zero_hash{};
+    if (sig_hash == zero_hash)
+      return false;
+    
+    // Note: Full verification would require reconstructing the signature hash
+    // from the public key and message, which needs proper XMSS implementation
+    // For now, we verify format and message match
+    return true;
   }
 
   std::vector<uint8_t> xmss_public_key::get_public_key() const
@@ -312,19 +360,45 @@ namespace crypto
   {
     sphincs_signature sig;
     
-    // In a real implementation, this would create a proper SPHINCS+ signature
-    // For now, we'll create a simple signature structure
+    // SECURITY FIX: Create secure hash-based signature without exposing private key
+    // Use HMAC-like construction: H(priv_key || message || seed) instead of raw private key
     std::vector<uint8_t> sig_data(SIGNATURE_SIZE);
     
-    // Combine message hash with private key
-    std::memcpy(sig_data.data(), &message, sizeof(crypto::hash));
-    std::memcpy(sig_data.data() + sizeof(crypto::hash), m_private_key.data(), KEY_SIZE);
+    // Create a secure signature hash that doesn't expose the private key
+    // Combine: private_key || message || seed
+    std::vector<uint8_t> signature_input;
+    signature_input.reserve(KEY_SIZE + sizeof(crypto::hash) + m_seed.size());
+    signature_input.insert(signature_input.end(), m_private_key.begin(), m_private_key.end());
+    signature_input.insert(signature_input.end(), reinterpret_cast<const uint8_t*>(&message), 
+                          reinterpret_cast<const uint8_t*>(&message) + sizeof(crypto::hash));
+    signature_input.insert(signature_input.end(), m_seed.begin(), m_seed.end());
     
-    // Fill remaining space with random data
-    generate_random_bytes_not_thread_safe(
-      SIGNATURE_SIZE - sizeof(crypto::hash) - KEY_SIZE,
-      sig_data.data() + sizeof(crypto::hash) + KEY_SIZE
-    );
+    // Hash the combined input to create the signature (doesn't expose private key)
+    crypto::hash signature_hash;
+    crypto::cn_fast_hash(signature_input.data(), signature_input.size(), signature_hash);
+    
+    // Store the signature hash in the signature data
+    std::memcpy(sig_data.data(), &signature_hash, sizeof(crypto::hash));
+    std::memcpy(sig_data.data() + sizeof(crypto::hash), &message, sizeof(crypto::hash));
+    
+    // Fill remaining space with hash-based data (not random, deterministic but secure)
+    // Use iterative hashing to fill the remaining space
+    size_t offset = sizeof(crypto::hash) * 2;
+    size_t remaining = SIGNATURE_SIZE - offset;
+    crypto::hash temp_hash = signature_hash;
+    
+    for (size_t i = 0; i < remaining; i += sizeof(crypto::hash)) {
+      // Hash the previous hash with index to create next block
+      std::vector<uint8_t> hash_input;
+      hash_input.insert(hash_input.end(), reinterpret_cast<const uint8_t*>(&temp_hash), 
+                       reinterpret_cast<const uint8_t*>(&temp_hash) + sizeof(crypto::hash));
+      hash_input.insert(hash_input.end(), reinterpret_cast<const uint8_t*>(&i), 
+                       reinterpret_cast<const uint8_t*>(&i) + sizeof(size_t));
+      
+      crypto::cn_fast_hash(hash_input.data(), hash_input.size(), temp_hash);
+      size_t copy_size = std::min(remaining - i, static_cast<size_t>(sizeof(crypto::hash)));
+      std::memcpy(sig_data.data() + offset + i, &temp_hash, copy_size);
+    }
 
     // Load into signature object to populate private members
     (void)sig.load(sig_data);
@@ -370,17 +444,34 @@ namespace crypto
 
   bool sphincs_public_key::verify(const crypto::hash& message, const sphincs_signature& signature) const
   {
-    // In a real implementation, this would verify the SPHINCS+ signature
-    // For now, we'll do a basic check
+    // SECURITY FIX: Verify signature format and message match
+    // Note: Full SPHINCS+ verification requires proper implementation
     const std::vector<uint8_t> serialized = signature.save();
     if (serialized.size() != sphincs_signature::SIGNATURE_SIZE)
       return false;
 
-    // Extract the message hash from signature
+    // Extract components from signature:
+    // - Signature hash (first HASH_SIZE bytes)
+    // - Message (next HASH_SIZE bytes)
+    crypto::hash sig_hash{};
     crypto::hash sig_message{};
-    std::memcpy(&sig_message, serialized.data(), sizeof(crypto::hash));
     
-    return sig_message == message;
+    std::memcpy(&sig_hash, serialized.data(), sizeof(crypto::hash));
+    std::memcpy(&sig_message, serialized.data() + sizeof(crypto::hash), sizeof(crypto::hash));
+    
+    // Verify message matches
+    if (sig_message != message)
+      return false;
+    
+    // Verify signature hash is not all zeros (basic sanity check)
+    crypto::hash zero_hash{};
+    if (sig_hash == zero_hash)
+      return false;
+    
+    // Note: Full verification would require reconstructing the signature hash
+    // from the public key and message, which needs proper SPHINCS+ implementation
+    // For now, we verify format and message match
+    return true;
   }
 
   std::vector<uint8_t> sphincs_public_key::get_public_key() const
