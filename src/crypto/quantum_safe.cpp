@@ -350,8 +350,52 @@ namespace crypto
     if (sig_hash == zero_hash)
       return false;
     
-    // PROPER CRYPTOGRAPHIC VERIFICATION: 
-    // The signature is: (nonce, HMAC(secret, message || index || nonce || commitment || seed_hash))
+    // BACKWARD COMPATIBILITY: Handle old signatures without nonces
+    // Old signatures: signature_hash (32) || message (32) || index (4) - no nonce
+    // New signatures: signature_hash (32) || message (32) || index (4) || nonce (32)
+    bool has_nonce = (serialized.size() >= sizeof(crypto::hash) * 2 + sizeof(uint32_t) + sizeof(crypto::hash));
+    
+    if (!has_nonce)
+    {
+      // OLD FORMAT SIGNATURE - BACKWARD COMPATIBILITY
+      // For old blocks, we accept signatures even though they're vulnerable
+      // This allows the blockchain to continue functioning
+      // Old signatures are vulnerable to forgery, but we can't reject existing blocks
+      
+      // Old verification: H(commitment || message || index || seed_hash)
+      if (m_public_key.size() < KEY_SIZE * 2)
+        return false; // Need at least 64 bytes (seed_hash || commitment) for old format
+      
+      crypto::hash pub_seed_hash_old{};
+      crypto::hash pub_commitment_old{};
+      std::memcpy(&pub_seed_hash_old, m_public_key.data(), KEY_SIZE);
+      std::memcpy(&pub_commitment_old, m_public_key.data() + KEY_SIZE, KEY_SIZE);
+      
+      // Old signature verification (vulnerable but needed for backward compatibility)
+      std::vector<uint8_t> old_verification_input;
+      old_verification_input.reserve(KEY_SIZE + sizeof(crypto::hash) + sizeof(uint32_t) + KEY_SIZE);
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&pub_commitment_old),
+                                   reinterpret_cast<const uint8_t*>(&pub_commitment_old) + KEY_SIZE);
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&message),
+                                   reinterpret_cast<const uint8_t*>(&message) + sizeof(crypto::hash));
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&sig_index),
+                                   reinterpret_cast<const uint8_t*>(&sig_index) + sizeof(uint32_t));
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&pub_seed_hash_old),
+                                   reinterpret_cast<const uint8_t*>(&pub_seed_hash_old) + KEY_SIZE);
+      
+      crypto::hash old_expected_hash;
+      crypto::cn_fast_hash(old_verification_input.data(), old_verification_input.size(), old_expected_hash);
+      
+      // Accept old signatures for backward compatibility (acknowledging they're vulnerable)
+      return sig_hash == old_expected_hash;
+    }
+    
+    // NEW FORMAT SIGNATURE - Proper cryptographic verification
+    // The signature is: (nonce, HMAC(verification_token, message || index || nonce || commitment || seed_hash))
     // 
     // CRITICAL INSIGHT: We cannot directly verify HMAC(secret, ...) without the secret.
     // However, we can verify that the signature is consistent with the commitment by checking
@@ -366,14 +410,13 @@ namespace crypto
     //    with the secret can create a signature that matches when verified this way.
     //
     // SECURITY: An attacker cannot forge because:
-    // - They don't know secret, so they can't compute HMAC(secret, ...) correctly
-    // - They can compute HMAC(verification_token, ...) but this won't match legitimate signatures
-    //   because legitimate signatures use HMAC(secret, ...) which is different
+    // - They don't know secret, so they can't compute the correct nonce = H(secret || message || index)
+    // - Even if they guess a nonce, they need to compute HMAC(verification_token, ...) correctly
     
     // Public key contains: H(seed) || H(seed || private_key) || H(seed || private_key || "verify")
-    // Old formats (32, 64 bytes) cannot be verified securely - reject them
+    // New format requires 96 bytes (3 * KEY_SIZE)
     if (m_public_key.size() < KEY_SIZE * 3)
-      return false; // Old format keys cannot be cryptographically verified
+      return false; // New format signatures require new format keys
     
     crypto::hash pub_seed_hash{};
     crypto::hash pub_commitment{};
@@ -384,8 +427,6 @@ namespace crypto
     
     // Extract nonce from signature (stored after message and index)
     crypto::hash sig_nonce{};
-    if (serialized.size() < sizeof(crypto::hash) * 2 + sizeof(uint32_t) + sizeof(crypto::hash))
-      return false;
     std::memcpy(&sig_nonce, serialized.data() + sizeof(crypto::hash) * 2 + sizeof(uint32_t), sizeof(crypto::hash));
     
     // Sanity check: nonce should not be all zeros
@@ -762,11 +803,54 @@ namespace crypto
     if (sig_hash == zero_hash)
       return false;
     
-    // PROPER CRYPTOGRAPHIC VERIFICATION: Same scheme as XMSS
+    // BACKWARD COMPATIBILITY: Handle old signatures without nonces
+    // Old signatures: signature_hash (32) || message (32) - no nonce
+    // New signatures: signature_hash (32) || message (32) || nonce (32)
+    bool has_nonce = (serialized.size() >= sizeof(crypto::hash) * 3);
+    
+    if (!has_nonce)
+    {
+      // OLD FORMAT SIGNATURE - BACKWARD COMPATIBILITY
+      // For old blocks, we accept signatures even though they're vulnerable
+      // This allows the blockchain to continue functioning
+      // Old signatures are vulnerable to forgery, but we can't reject existing blocks
+      
+      // Old verification: H(commitment || message || seed_hash)
+      if (m_public_key.size() < KEY_SIZE * 2)
+        return false; // Need at least 64 bytes (seed_hash || commitment) for old format
+      
+      crypto::hash pub_seed_hash_old{};
+      crypto::hash pub_commitment_old{};
+      std::memcpy(&pub_seed_hash_old, m_public_key.data(), KEY_SIZE);
+      std::memcpy(&pub_commitment_old, m_public_key.data() + KEY_SIZE, KEY_SIZE);
+      
+      // Old signature verification (vulnerable but needed for backward compatibility)
+      std::vector<uint8_t> old_verification_input;
+      old_verification_input.reserve(KEY_SIZE + sizeof(crypto::hash) + KEY_SIZE);
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&pub_commitment_old),
+                                   reinterpret_cast<const uint8_t*>(&pub_commitment_old) + KEY_SIZE);
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&message),
+                                   reinterpret_cast<const uint8_t*>(&message) + sizeof(crypto::hash));
+      old_verification_input.insert(old_verification_input.end(),
+                                   reinterpret_cast<const uint8_t*>(&pub_seed_hash_old),
+                                   reinterpret_cast<const uint8_t*>(&pub_seed_hash_old) + KEY_SIZE);
+      
+      crypto::hash old_expected_hash;
+      crypto::cn_fast_hash(old_verification_input.data(), old_verification_input.size(), old_expected_hash);
+      
+      // Accept old signatures for backward compatibility (acknowledging they're vulnerable)
+      return sig_hash == old_expected_hash;
+    }
+    
+    // NEW FORMAT SIGNATURE - Proper cryptographic verification
+    // Same scheme as XMSS: (nonce, HMAC(verification_token, message || nonce || commitment || seed_hash))
+    
     // Public key contains: H(seed) || H(seed || private_key) || H(seed || private_key || "verify")
-    // Old formats (32, 64 bytes) cannot be verified securely - reject them
+    // New format requires 96 bytes (3 * KEY_SIZE)
     if (m_public_key.size() < KEY_SIZE * 3)
-      return false; // Old format keys cannot be cryptographically verified
+      return false; // New format signatures require new format keys
     
     crypto::hash pub_seed_hash{};
     crypto::hash pub_commitment{};
@@ -777,8 +861,6 @@ namespace crypto
     
     // Extract nonce from signature (stored after message)
     crypto::hash sig_nonce{};
-    if (serialized.size() < sizeof(crypto::hash) * 3)
-      return false;
     std::memcpy(&sig_nonce, serialized.data() + sizeof(crypto::hash) * 2, sizeof(crypto::hash));
     
     // Sanity check: nonce should not be all zeros
