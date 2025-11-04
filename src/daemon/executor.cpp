@@ -140,7 +140,30 @@ namespace daemonize
           if (!manager.load_keys(key_file))
             throw std::runtime_error("Failed to load quantum-safe keys from file");
         }
-        LOG_PRINT_L0("Quantum-safe key file loaded: " << key_file);
+        
+        // Auto-migrate old keys to new secure format if needed (plug-and-play)
+        if (manager.has_old_format_keys())
+        {
+          LOG_PRINT_L0("Detected old-format quantum-safe keys - auto-migrating to new secure format");
+          if (!manager.ensure_modern_keys(xmss_height, sphincs_level))
+          {
+            throw std::runtime_error("Failed to auto-migrate quantum-safe keys to new secure format");
+          }
+          
+          // Save migrated keys back to file
+          if (!manager.save_dual_keys(key_file))
+          {
+            LOG_PRINT_L1("Warning: Failed to save migrated keys to file - keys will be regenerated on next load");
+          }
+          else
+          {
+            LOG_PRINT_L0("Successfully migrated and saved quantum-safe keys to: " << key_file);
+          }
+        }
+        else
+        {
+          LOG_PRINT_L0("Quantum-safe key file loaded: " << key_file);
+        }
       }
       
       LOG_PRINT_L0("Quantum-safe enforcement: ALWAYS ACTIVE | dual_enforcement=ON, hybrid=ON, xmss_height=" 

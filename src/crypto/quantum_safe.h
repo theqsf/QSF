@@ -244,6 +244,8 @@ namespace crypto
     // Dual algorithm enforcement methods
     bool generate_dual_keys(uint32_t xmss_tree_height = 10, uint32_t sphincs_level = 5);
     bool has_dual_keys() const;
+    bool has_old_format_keys() const; // Check if keys are in old vulnerable format
+    bool ensure_modern_keys(uint32_t xmss_tree_height = 10, uint32_t sphincs_level = 5); // Auto-migrate old keys
     bool validate_dual_signature(const std::vector<uint8_t>& message, 
                                 const std::vector<uint8_t>& xmss_signature,
                                 const std::vector<uint8_t>& sphincs_signature) const;

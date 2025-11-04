@@ -594,12 +594,18 @@ namespace cryptonote
         #if QSF_BLOCK_QUANTUM_VALIDATION
         try {
           crypto::quantum_safe_manager qmgr;
-          if (!qmgr.has_dual_keys()) {
-            // Generate dual keys if they don't exist
-            if (!qmgr.generate_dual_keys(QSF_DEFAULT_XMSS_TREE_HEIGHT, QSF_DEFAULT_SPHINCS_LEVEL)) {
-              LOG_ERROR("Failed to generate quantum-safe dual keys for found block");
-              continue; // Try next nonce
-            }
+          
+          // Auto-migrate old keys to new secure format if needed (plug-and-play)
+          // This ensures old keys are automatically upgraded without user intervention
+          bool had_old_keys = qmgr.has_old_format_keys();
+          if (!qmgr.ensure_modern_keys(QSF_DEFAULT_XMSS_TREE_HEIGHT, QSF_DEFAULT_SPHINCS_LEVEL)) {
+            LOG_ERROR("Failed to ensure modern quantum-safe dual keys for found block");
+            continue; // Try next nonce
+          }
+          
+          // Log migration if it happened
+          if (had_old_keys) {
+            LOG_PRINT_L0("Auto-migrated quantum-safe keys from old format to new secure format");
           }
           
           if (!add_quantum_safe_signatures_to_block(b, qmgr)) {
