@@ -1224,7 +1224,7 @@ namespace qsf
     QVBoxLayout* aboutLayout = new QVBoxLayout(aboutGroup);
     
     QLabel* aboutText = new QLabel(
-      "QSF QuantumSafeFoundation v2.1\n\n"
+      "QSF QuantumSafeFoundation v2.1.2\n\n"
       "A quantum-resistant cryptocurrency combining RandomX proof-of-work mining "
       "with XMSS/SPHINCS+ quantum-safe signatures.\n\n"
       "© 2024 QSF QuantumSafeFoundation\n"
