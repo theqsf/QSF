@@ -45,6 +45,8 @@ GuiWalletManager::GuiWalletManager(QObject* parent)
     , m_isRefreshing(false)
     , m_autoRefreshWasEnabled(false)
     , m_rescanCompletedOnce(false)
+    , m_blocksToUnlock(0)
+    , m_timeToUnlock(0)
     , m_lib(new LibwalletState())
 {
     m_refreshTimer = new QTimer(this);
@@ -203,6 +205,57 @@ void GuiWalletManager::refreshBalance()
     m_lib->wallet->refreshAsync();
 }
 
+bool GuiWalletManager::sweepUnmixableOutputs(QString* errorOut)
+{
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return false;
+    }
+    
+    try {
+        // Create sweep transaction for unmixable outputs
+        qsf::PendingTransaction* ptx = m_lib->wallet->createSweepUnmixableTransaction();
+        
+        if (!ptx) {
+            if (errorOut) *errorOut = "Failed to create sweep transaction";
+            return false;
+        }
+        
+        const int status = ptx->status();
+        if (status != qsf::PendingTransaction::Status_Ok) {
+            if (errorOut) *errorOut = QString::fromStdString(ptx->errorString());
+            m_lib->wallet->disposeTransaction(ptx);
+            return false;
+        }
+        
+        // Check if there are any transactions to commit
+        if (ptx->txCount() == 0) {
+            // No unmixable outputs found - this is not an error
+            m_lib->wallet->disposeTransaction(ptx);
+            if (errorOut) *errorOut = "No unmixable outputs found";
+            return true; // Not an error - just no unmixable outputs
+        }
+        
+        // Commit the sweep transaction
+        const bool committed = ptx->commit();
+        if (!committed) {
+            if (errorOut) *errorOut = QString::fromStdString(ptx->errorString());
+            m_lib->wallet->disposeTransaction(ptx);
+            return false;
+        }
+        
+        m_lib->wallet->disposeTransaction(ptx);
+        
+        // Trigger a balance refresh after sweeping
+        refreshBalance();
+        return true;
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while sweeping unmixable outputs";
+        return false;
+    }
+}
+
 void GuiWalletManager::setAutoRefresh(bool enabled, int intervalMs)
 {
     m_autoRefresh = enabled;
@@ -295,6 +348,19 @@ void GuiWalletManager::updateCachedFieldsFromWallet(bool emitSignals)
     const QString addr = QString::fromStdString(m_lib->wallet->address());
     const uint64_t balAtomic = m_lib->wallet->balance();
     const QString bal = displayAmount(balAtomic);
+    
+    // Update unlocked/locked balance
+    uint64_t unlockedBalAtomic = m_lib->wallet->unlockedBalance();
+    uint64_t lockedBalAtomic = (balAtomic > unlockedBalAtomic) ? (balAtomic - unlockedBalAtomic) : 0;
+    m_unlockedBalance = displayAmount(unlockedBalAtomic);
+    m_lockedBalance = displayAmount(lockedBalAtomic);
+    
+    // Get unlock time information (using internal wallet methods if available)
+    // Note: The wallet API doesn't directly expose blocks_to_unlock/time_to_unlock,
+    // so we'll calculate approximate values from unlock times in transactions
+    m_blocksToUnlock = 0;
+    m_timeToUnlock = 0;
+    
     bool openedJustNow = false;
     if (!m_hasWallet) {
         m_hasWallet = true;
@@ -419,6 +485,216 @@ QString GuiWalletManager::makePaymentUri(const QString& address, const QString& 
         err);
     if (!err.empty()) { if (errorOut) *errorOut = QString::fromStdString(err); return QString(); }
     return QString::fromStdString(uri);
+}
+
+QList<GuiWalletManager::TransactionInfo> GuiWalletManager::getTransactionHistory(QString* errorOut)
+{
+    QList<TransactionInfo> result;
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return result;
+    }
+    
+    try {
+        qsf::TransactionHistory* history = m_lib->wallet->history();
+        if (!history) {
+            if (errorOut) *errorOut = "Failed to get transaction history";
+            return result;
+        }
+        
+        history->refresh();
+        int count = history->count();
+        for (int i = 0; i < count; ++i) {
+            qsf::TransactionInfo* ti = history->transaction(i);
+            if (!ti) continue;
+            
+            TransactionInfo info;
+            info.txid = QString::fromStdString(ti->hash());
+            info.direction = (ti->direction() == qsf::TransactionInfo::Direction_In) ? "in" : "out";
+            info.amount = displayAmount(ti->amount());
+            info.fee = displayAmount(ti->fee());
+            info.blockHeight = ti->blockHeight();
+            info.confirmations = ti->confirmations();
+            info.unlockTime = ti->unlockTime();
+            info.timestamp = ti->timestamp();
+            info.paymentId = QString::fromStdString(ti->paymentId());
+            info.description = QString::fromStdString(ti->description());
+            info.isPending = ti->isPending();
+            info.isFailed = ti->isFailed();
+            info.isCoinbase = ti->isCoinbase();
+            
+            // Get transfers
+            const auto& transfers = ti->transfers();
+            for (const auto& transfer : transfers) {
+                info.transfers.push_back({QString::fromStdString(transfer.address), displayAmount(transfer.amount)});
+            }
+            
+            result.append(info);
+        }
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while getting transaction history";
+    }
+    
+    return result;
+}
+
+bool GuiWalletManager::rescanSpent(QString* errorOut)
+{
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return false;
+    }
+    
+    try {
+        bool result = m_lib->wallet->rescanSpent();
+        if (!result) {
+            // Check for error status
+            if (errorOut) *errorOut = "Rescan spent failed - check daemon connection";
+        }
+        return result;
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while rescanning spent outputs";
+        return false;
+    }
+}
+
+bool GuiWalletManager::sweepAll(const QString& toAddress, QString* txidOut, QString* errorOut)
+{
+    if (txidOut) txidOut->clear();
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return false;
+    }
+    
+    // Validate address
+    const std::string addr = toAddress.trimmed().toStdString();
+    if (!qsf::Wallet::addressValid(addr, m_lib->net)) {
+        if (errorOut) *errorOut = "Invalid recipient address";
+        return false;
+    }
+    
+    try {
+        // Create sweep transaction (amount = 0 means sweep all)
+        qsf::optional<uint64_t> amountOpt; // Empty optional = sweep all
+        qsf::PendingTransaction* ptx = m_lib->wallet->createTransaction(
+            addr, "", amountOpt, /*mixin*/ 0,
+            qsf::PendingTransaction::Priority_Low, /*subaddr_account*/ 0, {});
+        
+        if (!ptx) {
+            if (errorOut) *errorOut = "Failed to create sweep transaction";
+            return false;
+        }
+        
+        const int status = ptx->status();
+        if (status != qsf::PendingTransaction::Status_Ok) {
+            if (errorOut) *errorOut = QString::fromStdString(ptx->errorString());
+            m_lib->wallet->disposeTransaction(ptx);
+            return false;
+        }
+        
+        // Commit transaction
+        const bool committed = ptx->commit();
+        if (!committed) {
+            if (errorOut) *errorOut = QString::fromStdString(ptx->errorString());
+            m_lib->wallet->disposeTransaction(ptx);
+            return false;
+        }
+        
+        // Extract txids
+        const std::vector<std::string> ids = ptx->txid();
+        if (!ids.empty() && txidOut) {
+            *txidOut = QString::fromStdString(ids.front());
+        }
+        
+        m_lib->wallet->disposeTransaction(ptx);
+        
+        // Trigger a balance refresh
+        refreshBalance();
+        return true;
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while sweeping all balance";
+        return false;
+    }
+}
+
+bool GuiWalletManager::sweepAllToSelf(QString* txidOut, QString* errorOut)
+{
+    // Sweep all to primary address
+    return sweepAll(m_walletAddress, txidOut, errorOut);
+}
+
+QString GuiWalletManager::createSubaddress(uint32_t accountIndex, const QString& label, QString* errorOut)
+{
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return QString();
+    }
+    
+    try {
+        m_lib->wallet->addSubaddress(accountIndex, label.toStdString());
+        
+        // Get the newly created subaddress
+        size_t numSubaddresses = m_lib->wallet->numSubaddresses(accountIndex);
+        if (numSubaddresses > 0) {
+            // Get the last subaddress (the one we just created)
+            QString address = QString::fromStdString(m_lib->wallet->address(accountIndex, static_cast<uint32_t>(numSubaddresses - 1)));
+            return address;
+        }
+        
+        if (errorOut) *errorOut = "Failed to get created subaddress";
+        return QString();
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while creating subaddress";
+        return QString();
+    }
+}
+
+QList<std::pair<QString, QString>> GuiWalletManager::getSubaddresses(uint32_t accountIndex, QString* errorOut)
+{
+    QList<std::pair<QString, QString>> result;
+    if (errorOut) errorOut->clear();
+    if (!m_lib || !m_lib->wallet) {
+        if (errorOut) *errorOut = "No wallet loaded";
+        return result;
+    }
+    
+    try {
+        // Get subaddresses directly from wallet API
+        size_t numSubs = m_lib->wallet->numSubaddresses(accountIndex);
+        for (size_t i = 0; i < numSubs; ++i) {
+            QString address = QString::fromStdString(m_lib->wallet->address(accountIndex, static_cast<uint32_t>(i)));
+            QString label = QString::fromStdString(m_lib->wallet->getSubaddressLabel(accountIndex, static_cast<uint32_t>(i)));
+            result.append({address, label});
+        }
+    } catch (...) {
+        if (errorOut) *errorOut = "Exception occurred while getting subaddresses";
+    }
+    
+    return result;
+}
+
+QString GuiWalletManager::getUnlockedBalance() const
+{
+    return m_unlockedBalance;
+}
+
+QString GuiWalletManager::getLockedBalance() const
+{
+    return m_lockedBalance;
+}
+
+uint64_t GuiWalletManager::getBlocksToUnlock() const
+{
+    return m_blocksToUnlock;
+}
+
+uint64_t GuiWalletManager::getTimeToUnlock() const
+{
+    return m_timeToUnlock;
 }
 
 } // namespace qsf

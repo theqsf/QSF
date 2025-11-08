@@ -153,6 +153,9 @@ namespace qsf
     void onShowPrivateKey();
     void updateWalletBalance();
     void refreshWalletBalance();
+    void showTransactionHistory();
+    void sweepAllBalance();
+    void createNewSubaddress();
 
     // New stand-alone mining methods
     bool startStandaloneMining();
@@ -184,6 +187,8 @@ namespace qsf
     QLabel* m_balanceLabel;
     QLabel* m_walletStatusLabel;
     QLabel* m_hashrateLabel;
+    QLabel* m_unlockedBalanceLabel;
+    QLabel* m_lockedBalanceLabel;
     QLabel* m_connectionLabel;
     QLabel* m_blockHeightLabel;
     QLabel* m_networkHashrateLabel;
@@ -191,6 +196,10 @@ namespace qsf
     QPushButton* m_generateWalletBtn;
     QPushButton* m_recoverWalletBtn;
     QPushButton* m_copyAddressBtn;
+    QPushButton* m_showHistoryBtn;
+    QPushButton* m_rescanSpentBtn;
+    QPushButton* m_sweepAllBtn;
+    QPushButton* m_createSubaddressBtn;
     QPushButton* m_showPrivateKeyBtn;
     QPushButton* m_rescanWalletBtn;
     QTextBrowser* m_walletAddressDisplay;

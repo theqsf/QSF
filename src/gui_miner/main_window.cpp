@@ -63,6 +63,7 @@
 #include <QClipboard>
 #include <QInputDialog>
 #include <QDialog>
+#include <QTableWidget>
 #include <QCryptographicHash>
 #include <QByteArray>
 #include <QRandomGenerator>
@@ -884,6 +885,27 @@ namespace qsf
     
     walletLayout->addLayout(balanceLayout);
     
+    // Locked/Unlocked balance section
+    QHBoxLayout* unlockedBalanceLayout = new QHBoxLayout();
+    unlockedBalanceLayout->addWidget(new QLabel("Unlocked:"));
+    QLabel* unlockedBalanceLabel = new QLabel("0.00000000 QSF", walletGroup);
+    unlockedBalanceLabel->setStyleSheet("font-size: 14px; color: #00d4aa;");
+    unlockedBalanceLayout->addWidget(unlockedBalanceLabel);
+    unlockedBalanceLayout->addStretch();
+    walletLayout->addLayout(unlockedBalanceLayout);
+    
+    QHBoxLayout* lockedBalanceLayout = new QHBoxLayout();
+    lockedBalanceLayout->addWidget(new QLabel("Locked:"));
+    QLabel* lockedBalanceLabel = new QLabel("0.00000000 QSF", walletGroup);
+    lockedBalanceLabel->setStyleSheet("font-size: 14px; color: #ff6b6b;");
+    lockedBalanceLayout->addWidget(lockedBalanceLabel);
+    lockedBalanceLayout->addStretch();
+    walletLayout->addLayout(lockedBalanceLayout);
+    
+    // Store labels for later updates
+    m_unlockedBalanceLabel = unlockedBalanceLabel;
+    m_lockedBalanceLabel = lockedBalanceLabel;
+    
     // Hashrate section
     QHBoxLayout* hashrateLayout = new QHBoxLayout();
     hashrateLayout->addWidget(new QLabel("Hashrate:"));
@@ -926,6 +948,51 @@ namespace qsf
     walletBtnLayout->addWidget(m_rescanWalletBtn);
     walletBtnLayout->addWidget(m_showPrivateKeyBtn);
     walletLayout->addLayout(walletBtnLayout);
+    
+    // Advanced wallet operations
+    QHBoxLayout* advancedWalletBtnLayout = new QHBoxLayout();
+    QPushButton* showHistoryBtn = new QPushButton("Transaction History", walletGroup);
+    QPushButton* rescanSpentBtn = new QPushButton("Rescan Spent", walletGroup);
+    QPushButton* sweepAllBtn = new QPushButton("Sweep All", walletGroup);
+    QPushButton* createSubaddressBtn = new QPushButton("New Subaddress", walletGroup);
+    
+    showHistoryBtn->setEnabled(false);
+    rescanSpentBtn->setEnabled(false);
+    sweepAllBtn->setEnabled(false);
+    createSubaddressBtn->setEnabled(false);
+    
+    advancedWalletBtnLayout->addWidget(showHistoryBtn);
+    advancedWalletBtnLayout->addWidget(rescanSpentBtn);
+    advancedWalletBtnLayout->addWidget(sweepAllBtn);
+    advancedWalletBtnLayout->addWidget(createSubaddressBtn);
+    walletLayout->addLayout(advancedWalletBtnLayout);
+    
+    // Connect advanced wallet operations
+    connect(showHistoryBtn, &QPushButton::clicked, [this]() {
+      showTransactionHistory();
+    });
+    connect(rescanSpentBtn, &QPushButton::clicked, [this]() {
+      QString error;
+      m_miningLog->append("[INFO] Rescanning spent outputs...");
+      if (m_walletManager->rescanSpent(&error)) {
+        m_miningLog->append("[INFO] ✅ Rescan spent completed successfully");
+        updateWalletBalance();
+      } else {
+        m_miningLog->append("[ERROR] ❌ Rescan spent failed: " + error);
+      }
+    });
+    connect(sweepAllBtn, &QPushButton::clicked, [this]() {
+      sweepAllBalance();
+    });
+    connect(createSubaddressBtn, &QPushButton::clicked, [this]() {
+      createNewSubaddress();
+    });
+    
+    // Store button references for enabling/disabling
+    m_showHistoryBtn = showHistoryBtn;
+    m_rescanSpentBtn = rescanSpentBtn;
+    m_sweepAllBtn = sweepAllBtn;
+    m_createSubaddressBtn = createSubaddressBtn;
     
     overviewLayout->addWidget(walletGroup);
     
@@ -1705,6 +1772,11 @@ namespace qsf
     m_walletAddress = address;
     m_hasWallet = true;
     m_walletAddressDisplay->setText(address);
+    // Enable advanced wallet operations
+    if (m_showHistoryBtn) m_showHistoryBtn->setEnabled(true);
+    if (m_rescanSpentBtn) m_rescanSpentBtn->setEnabled(true);
+    if (m_sweepAllBtn) m_sweepAllBtn->setEnabled(true);
+    if (m_createSubaddressBtn) m_createSubaddressBtn->setEnabled(true);
     m_walletAddressDisplay->setStyleSheet("background-color: #1a1a1a; border: 1px solid #404040; padding: 8px; border-radius: 4px; font-family: monospace; color: #ffffff;");
     m_walletAddressEdit->setText(address);
     m_copyAddressBtn->setEnabled(true);
@@ -1737,7 +1809,13 @@ namespace qsf
     m_copyAddressBtn->setEnabled(false);
     m_rescanWalletBtn->setEnabled(false);
     m_showPrivateKeyBtn->setEnabled(false);
+    if (m_showHistoryBtn) m_showHistoryBtn->setEnabled(false);
+    if (m_rescanSpentBtn) m_rescanSpentBtn->setEnabled(false);
+    if (m_sweepAllBtn) m_sweepAllBtn->setEnabled(false);
+    if (m_createSubaddressBtn) m_createSubaddressBtn->setEnabled(false);
     m_balanceLabel->setText("0.00000000 QSF");
+    if (m_unlockedBalanceLabel) m_unlockedBalanceLabel->setText("0.00000000 QSF");
+    if (m_lockedBalanceLabel) m_lockedBalanceLabel->setText("0.00000000 QSF");
     m_miningLog->append("[INFO] ℹ️ Wallet closed");
   }
 
@@ -1745,6 +1823,30 @@ namespace qsf
   {
     m_balanceLabel->setText(balance + " QSF");
     m_miningLog->append("[INFO] 💰 Balance updated: " + balance + " QSF");
+    
+    // Update locked/unlocked balance
+    if (m_walletManager) {
+      QString unlocked = m_walletManager->getUnlockedBalance();
+      QString locked = m_walletManager->getLockedBalance();
+      uint64_t blocksToUnlock = m_walletManager->getBlocksToUnlock();
+      uint64_t timeToUnlock = m_walletManager->getTimeToUnlock();
+      
+      if (m_unlockedBalanceLabel) {
+        m_unlockedBalanceLabel->setText(unlocked + " QSF");
+      }
+      if (m_lockedBalanceLabel) {
+        QString lockedText = locked + " QSF";
+        if (blocksToUnlock > 0) {
+          lockedText += QString(" (%1 blocks)").arg(blocksToUnlock);
+        }
+        if (timeToUnlock > 0) {
+          uint64_t hours = timeToUnlock / 3600;
+          uint64_t minutes = (timeToUnlock % 3600) / 60;
+          lockedText += QString(" (~%1h %2m)").arg(hours).arg(minutes);
+        }
+        m_lockedBalanceLabel->setText(lockedText);
+      }
+    }
     
     // Check if balance is 0 and daemon is not running
     if (balance == "0.000000000000" || balance == "0" || balance.isEmpty()) {
@@ -2579,6 +2681,24 @@ namespace qsf
     if (!currentBalance.isEmpty()) {
       m_balanceLabel->setText(currentBalance + " QSF");
     }
+    
+    // Periodically sweep unmixable outputs to consolidate balance
+    // This helps ensure balance stays consistent by consolidating dust outputs
+    static int sweepCounter = 0;
+    sweepCounter++;
+    if (sweepCounter >= 10) { // Sweep every 10 balance updates (roughly every 2.5 minutes with 15s refresh)
+      sweepCounter = 0;
+      QString sweepError;
+      if (m_walletManager->sweepUnmixableOutputs(&sweepError)) {
+        if (sweepError.isEmpty()) {
+          m_miningLog->append("[INFO] ✅ Swept unmixable outputs to consolidate balance");
+        } else if (sweepError != "No unmixable outputs found") {
+          m_miningLog->append("[INFO] ℹ️ " + sweepError);
+        }
+      } else {
+        m_miningLog->append("[WARNING] ⚠️ Failed to sweep unmixable outputs: " + sweepError);
+      }
+    }
   }
 
   void MainWindow::refreshWalletBalance() {
@@ -2586,6 +2706,126 @@ namespace qsf
       return;
     }
     m_walletManager->refreshBalance();
+  }
+
+  void MainWindow::showTransactionHistory() {
+    if (!m_walletManager || !m_walletManager->hasWallet()) {
+      m_miningLog->append("[ERROR] ❌ No wallet loaded");
+      return;
+    }
+    
+    QString error;
+    QList<GuiWalletManager::TransactionInfo> history = m_walletManager->getTransactionHistory(&error);
+    
+    if (!error.isEmpty()) {
+      m_miningLog->append("[ERROR] ❌ Failed to get transaction history: " + error);
+      return;
+    }
+    
+    // Display transaction history in a dialog
+    QDialog* historyDialog = new QDialog(this);
+    historyDialog->setWindowTitle("Transaction History");
+    historyDialog->setMinimumSize(800, 600);
+    
+    QVBoxLayout* layout = new QVBoxLayout(historyDialog);
+    QTableWidget* table = new QTableWidget(historyDialog);
+    table->setColumnCount(8);
+    table->setHorizontalHeaderLabels({"Date", "Type", "Amount", "Fee", "Height", "Confirmations", "TXID", "Payment ID"});
+    table->setRowCount(history.size());
+    
+    for (int i = 0; i < history.size(); ++i) {
+      const auto& tx = history[i];
+      QDateTime dateTime = QDateTime::fromSecsSinceEpoch(tx.timestamp);
+      table->setItem(i, 0, new QTableWidgetItem(dateTime.toString("yyyy-MM-dd hh:mm:ss")));
+      table->setItem(i, 1, new QTableWidgetItem(tx.direction == "in" ? "In" : "Out"));
+      table->setItem(i, 2, new QTableWidgetItem(tx.amount + " QSF"));
+      table->setItem(i, 3, new QTableWidgetItem(tx.fee + " QSF"));
+      table->setItem(i, 4, new QTableWidgetItem(QString::number(tx.blockHeight)));
+      table->setItem(i, 5, new QTableWidgetItem(QString::number(tx.confirmations)));
+      table->setItem(i, 6, new QTableWidgetItem(tx.txid));
+      table->setItem(i, 7, new QTableWidgetItem(tx.paymentId));
+    }
+    
+    table->resizeColumnsToContents();
+    layout->addWidget(table);
+    
+    QPushButton* closeBtn = new QPushButton("Close", historyDialog);
+    connect(closeBtn, &QPushButton::clicked, historyDialog, &QDialog::accept);
+    layout->addWidget(closeBtn);
+    
+    historyDialog->exec();
+    delete historyDialog;
+  }
+
+  void MainWindow::sweepAllBalance() {
+    if (!m_walletManager || !m_walletManager->hasWallet()) {
+      m_miningLog->append("[ERROR] ❌ No wallet loaded");
+      return;
+    }
+    
+    // Ask user for destination address
+    bool ok;
+    QString address = QInputDialog::getText(this, "Sweep All Balance",
+                                              "Enter destination address (leave empty to sweep to self):",
+                                              QLineEdit::Normal, "", &ok);
+    
+    if (!ok) return;
+    
+    QString txid;
+    QString error;
+    bool success;
+    
+    if (address.trimmed().isEmpty()) {
+      // Sweep to self
+      m_miningLog->append("[INFO] Sweeping all balance to self...");
+      success = m_walletManager->sweepAllToSelf(&txid, &error);
+    } else {
+      // Sweep to specified address
+      m_miningLog->append("[INFO] Sweeping all balance to " + address + "...");
+      success = m_walletManager->sweepAll(address, &txid, &error);
+    }
+    
+    if (success) {
+      m_miningLog->append("[INFO] ✅ Sweep all completed successfully");
+      if (!txid.isEmpty()) {
+        m_miningLog->append("[INFO] Transaction ID: " + txid);
+      }
+      updateWalletBalance();
+    } else {
+      m_miningLog->append("[ERROR] ❌ Sweep all failed: " + error);
+    }
+  }
+
+  void MainWindow::createNewSubaddress() {
+    if (!m_walletManager || !m_walletManager->hasWallet()) {
+      m_miningLog->append("[ERROR] ❌ No wallet loaded");
+      return;
+    }
+    
+    // Ask user for label
+    bool ok;
+    QString label = QInputDialog::getText(this, "Create New Subaddress",
+                                           "Enter label for new subaddress:",
+                                           QLineEdit::Normal, "", &ok);
+    
+    if (!ok || label.trimmed().isEmpty()) {
+      return;
+    }
+    
+    QString error;
+    QString address = m_walletManager->createSubaddress(0, label, &error); // Account 0 for now
+    
+    if (!error.isEmpty()) {
+      m_miningLog->append("[ERROR] ❌ Failed to create subaddress: " + error);
+      return;
+    }
+    
+    if (!address.isEmpty()) {
+      m_miningLog->append("[INFO] ✅ New subaddress created: " + address);
+      m_miningLog->append("[INFO] Label: " + label);
+    } else {
+      m_miningLog->append("[ERROR] ❌ Failed to create subaddress");
+    }
   }
 
   void MainWindow::updateMiningStatus(bool isMining)
