@@ -80,6 +80,12 @@ public:
     uint64_t getBlocksToUnlock() const;
     uint64_t getTimeToUnlock() const; // seconds
     
+    // Sync status
+    bool isSynchronized() const;
+    uint64_t getWalletHeight() const;
+    uint64_t getDaemonHeight() const;
+    uint64_t getDaemonTargetHeight() const;
+    
     // Wallet path management
     void setWalletPath(const QString& walletPath);
 

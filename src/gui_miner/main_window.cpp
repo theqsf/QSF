@@ -902,9 +902,33 @@ namespace qsf
     lockedBalanceLayout->addStretch();
     walletLayout->addLayout(lockedBalanceLayout);
     
+    // Sync status section
+    QHBoxLayout* syncStatusLayout = new QHBoxLayout();
+    syncStatusLayout->addWidget(new QLabel("Sync Status:"));
+    QLabel* syncStatusLabel = new QLabel("Not Synced", walletGroup);
+    syncStatusLabel->setStyleSheet("font-size: 12px; color: #ff6b6b; font-weight: bold;");
+    syncStatusLayout->addWidget(syncStatusLabel);
+    syncStatusLayout->addStretch();
+    walletLayout->addLayout(syncStatusLayout);
+    
+    QHBoxLayout* heightLayout = new QHBoxLayout();
+    heightLayout->addWidget(new QLabel("Wallet Height:"));
+    QLabel* walletHeightLabel = new QLabel("0", walletGroup);
+    walletHeightLabel->setStyleSheet("font-size: 12px; color: #ffffff;");
+    heightLayout->addWidget(walletHeightLabel);
+    heightLayout->addWidget(new QLabel("Daemon Height:"));
+    QLabel* daemonHeightLabel = new QLabel("0", walletGroup);
+    daemonHeightLabel->setStyleSheet("font-size: 12px; color: #ffffff;");
+    heightLayout->addWidget(daemonHeightLabel);
+    heightLayout->addStretch();
+    walletLayout->addLayout(heightLayout);
+    
     // Store labels for later updates
     m_unlockedBalanceLabel = unlockedBalanceLabel;
     m_lockedBalanceLabel = lockedBalanceLabel;
+    m_syncStatusLabel = syncStatusLabel;
+    m_walletHeightLabel = walletHeightLabel;
+    m_daemonHeightLabel = daemonHeightLabel;
     
     // Hashrate section
     QHBoxLayout* hashrateLayout = new QHBoxLayout();
@@ -948,51 +972,6 @@ namespace qsf
     walletBtnLayout->addWidget(m_rescanWalletBtn);
     walletBtnLayout->addWidget(m_showPrivateKeyBtn);
     walletLayout->addLayout(walletBtnLayout);
-    
-    // Advanced wallet operations
-    QHBoxLayout* advancedWalletBtnLayout = new QHBoxLayout();
-    QPushButton* showHistoryBtn = new QPushButton("Transaction History", walletGroup);
-    QPushButton* rescanSpentBtn = new QPushButton("Rescan Spent", walletGroup);
-    QPushButton* sweepAllBtn = new QPushButton("Sweep All", walletGroup);
-    QPushButton* createSubaddressBtn = new QPushButton("New Subaddress", walletGroup);
-    
-    showHistoryBtn->setEnabled(false);
-    rescanSpentBtn->setEnabled(false);
-    sweepAllBtn->setEnabled(false);
-    createSubaddressBtn->setEnabled(false);
-    
-    advancedWalletBtnLayout->addWidget(showHistoryBtn);
-    advancedWalletBtnLayout->addWidget(rescanSpentBtn);
-    advancedWalletBtnLayout->addWidget(sweepAllBtn);
-    advancedWalletBtnLayout->addWidget(createSubaddressBtn);
-    walletLayout->addLayout(advancedWalletBtnLayout);
-    
-    // Connect advanced wallet operations
-    connect(showHistoryBtn, &QPushButton::clicked, [this]() {
-      showTransactionHistory();
-    });
-    connect(rescanSpentBtn, &QPushButton::clicked, [this]() {
-      QString error;
-      m_miningLog->append("[INFO] Rescanning spent outputs...");
-      if (m_walletManager->rescanSpent(&error)) {
-        m_miningLog->append("[INFO] ✅ Rescan spent completed successfully");
-        updateWalletBalance();
-      } else {
-        m_miningLog->append("[ERROR] ❌ Rescan spent failed: " + error);
-      }
-    });
-    connect(sweepAllBtn, &QPushButton::clicked, [this]() {
-      sweepAllBalance();
-    });
-    connect(createSubaddressBtn, &QPushButton::clicked, [this]() {
-      createNewSubaddress();
-    });
-    
-    // Store button references for enabling/disabling
-    m_showHistoryBtn = showHistoryBtn;
-    m_rescanSpentBtn = rescanSpentBtn;
-    m_sweepAllBtn = sweepAllBtn;
-    m_createSubaddressBtn = createSubaddressBtn;
     
     overviewLayout->addWidget(walletGroup);
     
@@ -1772,17 +1751,13 @@ namespace qsf
     m_walletAddress = address;
     m_hasWallet = true;
     m_walletAddressDisplay->setText(address);
-    // Enable advanced wallet operations
-    if (m_showHistoryBtn) m_showHistoryBtn->setEnabled(true);
-    if (m_rescanSpentBtn) m_rescanSpentBtn->setEnabled(true);
-    if (m_sweepAllBtn) m_sweepAllBtn->setEnabled(true);
-    if (m_createSubaddressBtn) m_createSubaddressBtn->setEnabled(true);
     m_walletAddressDisplay->setStyleSheet("background-color: #1a1a1a; border: 1px solid #404040; padding: 8px; border-radius: 4px; font-family: monospace; color: #ffffff;");
     m_walletAddressEdit->setText(address);
     m_copyAddressBtn->setEnabled(true);
     m_rescanWalletBtn->setEnabled(true);
     m_showPrivateKeyBtn->setEnabled(true);
     m_miningLog->append("[INFO] ✅ Wallet opened: " + address);
+    
     // Ensure wallet talks to the same daemon URL as GUI
     if (m_walletManager && m_daemonUrlEdit) {
       const QString daemonUrl = m_daemonUrlEdit->text().trimmed();
@@ -1795,6 +1770,30 @@ namespace qsf
         int slash = hostPort.indexOf('/');
         if (slash > 0) hostPort = hostPort.left(slash);
         m_walletManager->setDaemonAddress(hostPort);
+      } else {
+        // Use default daemon address
+        m_walletManager->setDaemonAddress("127.0.0.1:18071");
+      }
+    }
+    
+    // Force an immediate balance update and sync status check
+    if (m_walletManager) {
+      m_walletManager->refreshBalance();
+      updateWalletBalance();
+      
+      // Log sync status
+      bool isSynced = m_walletManager->isSynchronized();
+      uint64_t walletHeight = m_walletManager->getWalletHeight();
+      uint64_t daemonHeight = m_walletManager->getDaemonHeight();
+      
+      if (daemonHeight == 0) {
+        m_miningLog->append("[WARNING] ⚠️ Cannot connect to daemon - wallet will not sync");
+        m_miningLog->append("[INFO] 💡 Please start the daemon or check daemon URL");
+      } else if (!isSynced) {
+        m_miningLog->append("[INFO] ⏳ Wallet is syncing...");
+        m_miningLog->append(QString("[INFO] Wallet height: %1, Daemon height: %2").arg(walletHeight).arg(daemonHeight));
+      } else {
+        m_miningLog->append("[INFO] ✅ Wallet is synchronized");
       }
     }
   }
@@ -1809,13 +1808,15 @@ namespace qsf
     m_copyAddressBtn->setEnabled(false);
     m_rescanWalletBtn->setEnabled(false);
     m_showPrivateKeyBtn->setEnabled(false);
-    if (m_showHistoryBtn) m_showHistoryBtn->setEnabled(false);
-    if (m_rescanSpentBtn) m_rescanSpentBtn->setEnabled(false);
-    if (m_sweepAllBtn) m_sweepAllBtn->setEnabled(false);
-    if (m_createSubaddressBtn) m_createSubaddressBtn->setEnabled(false);
     m_balanceLabel->setText("0.00000000 QSF");
     if (m_unlockedBalanceLabel) m_unlockedBalanceLabel->setText("0.00000000 QSF");
     if (m_lockedBalanceLabel) m_lockedBalanceLabel->setText("0.00000000 QSF");
+    if (m_syncStatusLabel) {
+      m_syncStatusLabel->setText("❌ Not Synced");
+      m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ff6b6b; font-weight: bold;");
+    }
+    if (m_walletHeightLabel) m_walletHeightLabel->setText("0");
+    if (m_daemonHeightLabel) m_daemonHeightLabel->setText("0");
     m_miningLog->append("[INFO] ℹ️ Wallet closed");
   }
 
@@ -1846,6 +1847,9 @@ namespace qsf
         }
         m_lockedBalanceLabel->setText(lockedText);
       }
+      
+      // Update sync status (also done in updateSyncStatus, but update here too for immediate feedback)
+      updateSyncStatus();
     }
     
     // Check if balance is 0 and daemon is not running
@@ -2510,11 +2514,12 @@ namespace qsf
       });
     }
     
-    // Update wallet balance if we have a wallet (but not too frequently to avoid spam)
+    // Update wallet balance and sync status if we have a wallet (but not too frequently to avoid spam)
     static int balanceUpdateCounter = 0;
     balanceUpdateCounter++;
     if (m_hasWallet && !m_walletAddress.isEmpty() && balanceUpdateCounter >= 3) {
       updateWalletBalance();
+      updateSyncStatus();
       balanceUpdateCounter = 0;
     }
     
@@ -2662,12 +2667,16 @@ namespace qsf
   {
     if (!m_walletManager || !m_walletManager->hasWallet()) {
       m_balanceLabel->setText("0.00000000 QSF");
+      if (m_unlockedBalanceLabel) m_unlockedBalanceLabel->setText("0.00000000 QSF");
+      if (m_lockedBalanceLabel) m_lockedBalanceLabel->setText("0.00000000 QSF");
       return;
     }
     
     // Check if daemon is running first
     if (!m_daemonRunning) {
       m_balanceLabel->setText("0.00000000 QSF");
+      if (m_unlockedBalanceLabel) m_unlockedBalanceLabel->setText("0.00000000 QSF");
+      if (m_lockedBalanceLabel) m_lockedBalanceLabel->setText("0.00000000 QSF");
       m_miningLog->append("[WARNING] ⚠️ Cannot refresh balance - no daemon running");
       m_miningLog->append("[INFO] 💡 Click 'Start Daemon' to sync wallet with blockchain");
       return;
@@ -2680,6 +2689,28 @@ namespace qsf
     QString currentBalance = m_walletManager->getBalance();
     if (!currentBalance.isEmpty()) {
       m_balanceLabel->setText(currentBalance + " QSF");
+    }
+    
+    // Update locked/unlocked balance
+    QString unlocked = m_walletManager->getUnlockedBalance();
+    QString locked = m_walletManager->getLockedBalance();
+    uint64_t blocksToUnlock = m_walletManager->getBlocksToUnlock();
+    uint64_t timeToUnlock = m_walletManager->getTimeToUnlock();
+    
+    if (m_unlockedBalanceLabel) {
+      m_unlockedBalanceLabel->setText(unlocked + " QSF");
+    }
+    if (m_lockedBalanceLabel) {
+      QString lockedText = locked + " QSF";
+      if (blocksToUnlock > 0) {
+        lockedText += QString(" (%1 blocks)").arg(blocksToUnlock);
+      }
+      if (timeToUnlock > 0) {
+        uint64_t hours = timeToUnlock / 3600;
+        uint64_t minutes = (timeToUnlock % 3600) / 60;
+        lockedText += QString(" (~%1h %2m)").arg(hours).arg(minutes);
+      }
+      m_lockedBalanceLabel->setText(lockedText);
     }
     
     // Periodically sweep unmixable outputs to consolidate balance
@@ -2698,6 +2729,54 @@ namespace qsf
       } else {
         m_miningLog->append("[WARNING] ⚠️ Failed to sweep unmixable outputs: " + sweepError);
       }
+    }
+  }
+
+  void MainWindow::updateSyncStatus()
+  {
+    if (!m_walletManager || !m_walletManager->hasWallet()) {
+      if (m_syncStatusLabel) {
+        m_syncStatusLabel->setText("❌ Not Synced");
+        m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ff6b6b; font-weight: bold;");
+      }
+      if (m_walletHeightLabel) m_walletHeightLabel->setText("0");
+      if (m_daemonHeightLabel) m_daemonHeightLabel->setText("0");
+      return;
+    }
+    
+    // Update sync status
+    bool isSynced = m_walletManager->isSynchronized();
+    uint64_t walletHeight = m_walletManager->getWalletHeight();
+    uint64_t daemonHeight = m_walletManager->getDaemonHeight();
+    uint64_t daemonTargetHeight = m_walletManager->getDaemonTargetHeight();
+    
+    if (m_syncStatusLabel) {
+      if (isSynced && daemonHeight > 0 && walletHeight >= daemonHeight) {
+        m_syncStatusLabel->setText("✅ Fully Synced");
+        m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #00d4aa; font-weight: bold;");
+      } else if (daemonHeight > 0 && walletHeight > 0) {
+        uint64_t remaining = daemonHeight > walletHeight ? (daemonHeight - walletHeight) : 0;
+        if (remaining > 0) {
+          m_syncStatusLabel->setText(QString("⏳ Syncing (%1 blocks)").arg(remaining));
+          m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ffa500; font-weight: bold;");
+        } else {
+          m_syncStatusLabel->setText("⏳ Syncing...");
+          m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ffa500; font-weight: bold;");
+        }
+      } else if (daemonHeight == 0) {
+        m_syncStatusLabel->setText("❌ No Daemon");
+        m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ff6b6b; font-weight: bold;");
+      } else {
+        m_syncStatusLabel->setText("❌ Not Synced");
+        m_syncStatusLabel->setStyleSheet("font-size: 12px; color: #ff6b6b; font-weight: bold;");
+      }
+    }
+    
+    if (m_walletHeightLabel) {
+      m_walletHeightLabel->setText(QString::number(walletHeight));
+    }
+    if (m_daemonHeightLabel) {
+      m_daemonHeightLabel->setText(QString::number(daemonHeight));
     }
   }
 

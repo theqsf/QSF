@@ -153,6 +153,7 @@ namespace qsf
     void onShowPrivateKey();
     void updateWalletBalance();
     void refreshWalletBalance();
+    void updateSyncStatus();
     void showTransactionHistory();
     void sweepAllBalance();
     void createNewSubaddress();
@@ -189,6 +190,9 @@ namespace qsf
     QLabel* m_hashrateLabel;
     QLabel* m_unlockedBalanceLabel;
     QLabel* m_lockedBalanceLabel;
+    QLabel* m_syncStatusLabel;
+    QLabel* m_walletHeightLabel;
+    QLabel* m_daemonHeightLabel;
     QLabel* m_connectionLabel;
     QLabel* m_blockHeightLabel;
     QLabel* m_networkHashrateLabel;
@@ -196,10 +200,6 @@ namespace qsf
     QPushButton* m_generateWalletBtn;
     QPushButton* m_recoverWalletBtn;
     QPushButton* m_copyAddressBtn;
-    QPushButton* m_showHistoryBtn;
-    QPushButton* m_rescanSpentBtn;
-    QPushButton* m_sweepAllBtn;
-    QPushButton* m_createSubaddressBtn;
     QPushButton* m_showPrivateKeyBtn;
     QPushButton* m_rescanWalletBtn;
     QTextBrowser* m_walletAddressDisplay;

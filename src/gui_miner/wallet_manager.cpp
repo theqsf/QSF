@@ -120,13 +120,31 @@ bool GuiWalletManager::openWallet(const QString& walletPath, const QString& pass
     }
     m_lib->wallet = w;
     m_lib->wallet->setListener(m_listener.get());
+    
+    // Set daemon address first
     setDaemonAddress(m_daemonAddress);
+    
+    // Force an initial refresh to connect to daemon and sync
+    // This is important on new machines where the wallet needs to sync
+    try {
+        m_lib->wallet->refreshAsync();
+    } catch (...) {
+        // Ignore errors - refresh will be retried
+    }
+    
     // Start background refresh
     m_lib->wallet->setAutoRefreshInterval(m_refreshInterval);
     m_lib->wallet->startRefresh();
+    
+    // Update cached fields immediately
     updateCachedFieldsFromWallet(true);
+    
+    // If rescan hasn't been done, do it
     if (!m_rescanCompletedOnce) {
         rescanBlockchainFromZero();
+    } else {
+        // Even if rescan was done, force a refresh to ensure balance is up to date
+        refreshBalance();
     }
     return true;
 }
@@ -286,34 +304,73 @@ void GuiWalletManager::setDaemonAddress(const QString& daemonAddress)
         int slash = a.indexOf('/');
         if (slash != -1) a = a.left(slash);
         const std::string addr = a.isEmpty() ? std::string("127.0.0.1:18071") : a.toStdString();
-        m_lib->wallet->init(addr);
+        
+        // Initialize connection to daemon
+        bool initSuccess = m_lib->wallet->init(addr);
+        if (!initSuccess) {
+            // Log error but continue - refresh will retry
+            qDebug() << "Failed to initialize daemon connection to" << QString::fromStdString(addr);
+        } else {
+            // Force a refresh after connecting to daemon
+            m_lib->wallet->refreshAsync();
+        }
     }
 }
 
 void GuiWalletManager::rescanBlockchainFromZero()
 {
     if (!m_hasWallet || !m_lib || !m_lib->wallet) return;
-    if (m_rescanCompletedOnce) { refreshBalance(); return; }
+    if (m_rescanCompletedOnce) { 
+        // Force a full rescan even if already done once
+        m_rescanCompletedOnce = false;
+    }
     m_rescanQueued = false;
     m_autoRefreshWasEnabled = m_autoRefresh;
     m_isRescanning = true;
+    // Set refresh from block height 0 to rescan from genesis
     m_lib->wallet->setRefreshFromBlockHeight(0);
+    // Perform async rescan - this will refresh the wallet from block 0
     m_lib->wallet->rescanBlockchainAsync();
+    // Also trigger a refresh to ensure balance is updated
+    m_lib->wallet->refreshAsync();
 }
 
 void GuiWalletManager::forceRefreshOnDaemonAvailable()
 {
     if (!m_hasWallet || !m_lib || !m_lib->wallet) return;
-    if (m_rescanQueued) rescanBlockchainFromZero();
-    else refreshBalance();
+    
+    // Ensure daemon address is set
+    setDaemonAddress(m_daemonAddress);
+    
+    // Force a refresh to sync with daemon
+    if (m_rescanQueued) {
+        rescanBlockchainFromZero();
+    } else {
+        // Force refresh multiple times to ensure sync
+        refreshBalance();
+        // Also trigger async refresh
+        m_lib->wallet->refreshAsync();
+    }
 }
 
 void GuiWalletManager::onDaemonStatusChanged(bool daemonRunning)
 {
     if (!daemonRunning) return;
-    if (m_hasWallet) {
-        if (!m_rescanCompletedOnce) rescanBlockchainFromZero();
-        else forceRefreshOnDaemonAvailable();
+    if (m_hasWallet && m_lib && m_lib->wallet) {
+        // When daemon becomes available, force a refresh
+        // This is important on new machines where the wallet needs to sync
+        qDebug() << "Daemon is now running, forcing wallet refresh";
+        
+        // Ensure daemon address is set
+        setDaemonAddress(m_daemonAddress);
+        
+        // Force refresh
+        if (!m_rescanCompletedOnce) {
+            rescanBlockchainFromZero();
+        } else {
+            // Force a refresh even if rescan was done
+            forceRefreshOnDaemonAvailable();
+        }
     }
 }
 
@@ -350,16 +407,61 @@ void GuiWalletManager::updateCachedFieldsFromWallet(bool emitSignals)
     const QString bal = displayAmount(balAtomic);
     
     // Update unlocked/locked balance
+    // Use non-strict mode to include pending transactions
     uint64_t unlockedBalAtomic = m_lib->wallet->unlockedBalance();
     uint64_t lockedBalAtomic = (balAtomic > unlockedBalAtomic) ? (balAtomic - unlockedBalAtomic) : 0;
     m_unlockedBalance = displayAmount(unlockedBalAtomic);
     m_lockedBalance = displayAmount(lockedBalAtomic);
     
-    // Get unlock time information (using internal wallet methods if available)
-    // Note: The wallet API doesn't directly expose blocks_to_unlock/time_to_unlock,
-    // so we'll calculate approximate values from unlock times in transactions
+    // Get unlock time information from transaction history
+    // Calculate blocks_to_unlock and time_to_unlock from pending transactions
     m_blocksToUnlock = 0;
     m_timeToUnlock = 0;
+    
+    try {
+        // Get transaction history to find locked transactions
+        qsf::TransactionHistory* history = m_lib->wallet->history();
+        if (history) {
+            history->refresh();
+            uint64_t walletHeight = m_lib->wallet->blockChainHeight();
+            uint64_t daemonHeight = m_lib->wallet->daemonBlockChainHeight();
+            
+            for (int i = 0; i < history->count(); ++i) {
+                qsf::TransactionInfo* ti = history->transaction(i);
+                if (!ti) continue;
+                
+                // Check if transaction is locked
+                if (ti->direction() == qsf::TransactionInfo::Direction_In && ti->unlockTime() > 0) {
+                    uint64_t unlockTime = ti->unlockTime();
+                    uint64_t blockHeight = ti->blockHeight();
+                    
+                    // Calculate blocks to unlock
+                    // CRYPTONOTE_MAX_BLOCK_NUMBER is 500000000 - if unlockTime is less, it's block-based
+                    const uint64_t MAX_BLOCK_NUMBER = 500000000;
+                    if (unlockTime < MAX_BLOCK_NUMBER) {
+                        // Block-based unlock time
+                        if (unlockTime > walletHeight) {
+                            uint64_t blocks = unlockTime - walletHeight;
+                            if (blocks > m_blocksToUnlock) {
+                                m_blocksToUnlock = blocks;
+                            }
+                        }
+                    } else {
+                        // Time-based unlock time
+                        uint64_t currentTime = std::time(nullptr);
+                        if (unlockTime > currentTime) {
+                            uint64_t time = unlockTime - currentTime;
+                            if (time > m_timeToUnlock) {
+                                m_timeToUnlock = time;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } catch (...) {
+        // Ignore errors in unlock time calculation
+    }
     
     bool openedJustNow = false;
     if (!m_hasWallet) {
@@ -695,6 +797,30 @@ uint64_t GuiWalletManager::getBlocksToUnlock() const
 uint64_t GuiWalletManager::getTimeToUnlock() const
 {
     return m_timeToUnlock;
+}
+
+bool GuiWalletManager::isSynchronized() const
+{
+    if (!m_lib || !m_lib->wallet) return false;
+    return m_lib->wallet->synchronized();
+}
+
+uint64_t GuiWalletManager::getWalletHeight() const
+{
+    if (!m_lib || !m_lib->wallet) return 0;
+    return m_lib->wallet->blockChainHeight();
+}
+
+uint64_t GuiWalletManager::getDaemonHeight() const
+{
+    if (!m_lib || !m_lib->wallet) return 0;
+    return m_lib->wallet->daemonBlockChainHeight();
+}
+
+uint64_t GuiWalletManager::getDaemonTargetHeight() const
+{
+    if (!m_lib || !m_lib->wallet) return 0;
+    return m_lib->wallet->daemonBlockChainTargetHeight();
 }
 
 } // namespace qsf
