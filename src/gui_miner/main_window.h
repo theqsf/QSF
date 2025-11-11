@@ -291,6 +291,8 @@ namespace qsf
     QStringList m_customZmqEndpoints;
     int m_configuredThreads = 0; // 0 means auto
     QString m_configuredDaemonUrl; // optional override for daemon URL
+    QNetworkAccessManager* m_httpNam = nullptr; // shared HTTP client for polling
+    int m_disconnectStrikes = 0; // debounce transient disconnects
 
     // New stand-alone mining state
     int m_localRpcPort;

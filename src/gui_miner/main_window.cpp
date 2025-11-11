@@ -216,8 +216,8 @@ namespace qsf
     
     // Set WM_CLASS for proper dock integration on Linux
 #ifndef Q_OS_WIN
-    setProperty("WM_CLASS", "qsf-gui-miner");
-    setWindowTitle("QSF Quantum-Safe Miner");
+    setProperty("WM_CLASS", "qsf-gui-wallet");
+    setWindowTitle("QSF GUI Wallet");
 #endif
     
     // Use standard ports for better compatibility
@@ -228,8 +228,7 @@ namespace qsf
     loadSettings();
     connectSignals();
     
-    // Initialize daemon process
-    m_daemonProcess = new QProcess(this);
+    // External-daemon mode: no local daemon process management
     
     // Force reset daemon status to ensure clean state
     m_daemonRunning = false;
@@ -239,45 +238,7 @@ namespace qsf
     m_walletCooldownTimer->setSingleShot(true);
     m_walletCooldownTimer->setInterval(3000); // 3 second cooldown between wallet operations
     
-    // Production: connect to ZMQ at startup using current network (defaults to Mainnet)
-    QTimer::singleShot(0, this, [this]() {
-      // Initialize ZMQ client lazily and connect
-      if (!m_zmqClient) {
-        m_zmqClient = std::make_unique<ZmqRpcClient>(this);
-        connect(m_zmqClient.get(), &ZmqRpcClient::connected, [this]() {
-          m_miningLog->append("[INFO] ✅ Connected to ZMQ RPC server (startup)");
-          m_connectionLabel->setText("Connected (ZMQ)");
-          m_connectionLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
-          // Consider quantum-safe features active when ZMQ control channel is up
-          m_daemonRunning = true;
-          m_daemonStatusLabel->setText("✅ Running");
-          m_daemonStatusLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
-          m_generatedKeysDisplay->setText(
-            "🔐 Quantum-Safe Signatures Active\n"
-            "==============================\n\n"
-            "✅ XMSS signatures: Automatically generated\n"
-            "✅ SPHINCS+ signatures: Automatically generated\n"
-            "✅ Dual enforcement: Always active\n"
-            "✅ Block validation: Automatic\n"
-            "✅ Mining integration: Active\n\n"
-            "Status: Connected to daemon via ZMQ\n"
-            "All blocks will have dual quantum-safe signatures"
-          );
-        });
-        connect(m_zmqClient.get(), &ZmqRpcClient::disconnected, [this]() {
-          m_miningLog->append("[INFO] ⚠️ Disconnected from ZMQ RPC server");
-        });
-        connect(m_zmqClient.get(), &ZmqRpcClient::error, [this](const QString &err) {
-          m_miningLog->append("[ERROR] ❌ ZMQ RPC error: " + err);
-        });
-      }
-      m_miningLog->append("[INFO] 🔌 Connecting to ZMQ for current network...");
-      if (!m_customZmqEndpoints.isEmpty()) {
-        m_zmqClient->connectUsingConfigured(m_customZmqEndpoints, config::ZMQ_RPC_DEFAULT_PORT);
-      } else {
-        m_zmqClient->connect(m_currentNetwork);
-      }
-    });
+    // ZMQ connection disabled in simplified mode
     
     // Initial server status check
     onCheckServerStatus();
@@ -313,45 +274,9 @@ namespace qsf
     // Initialize network manager
     m_networkManager = new QNetworkAccessManager(this);
     
-    // Initialize ZMQ client
-    m_zmqClient = std::make_unique<ZmqRpcClient>();
+    // ZMQ client disabled
     
-    // Connect ZMQ client signals
-    connect(m_zmqClient.get(), &ZmqRpcClient::connected, this, [this]() {
-      m_miningLog->append("[INFO] 🔗 Connected to ZMQ RPC");
-    });
-    connect(m_zmqClient.get(), &ZmqRpcClient::disconnected, this, [this]() {
-      m_miningLog->append("[WARNING] 🔌 Disconnected from ZMQ RPC");
-    });
-    connect(m_zmqClient.get(), &ZmqRpcClient::error, this, [this](const QString& error) {
-      m_miningLog->append("[ERROR] ZMQ: " + error);
-    });
-    
-    // Try to connect to local daemon ZMQ immediately if daemon is running
-    QTimer::singleShot(2000, [this]() {
-      if (m_daemonRunning && m_zmqClient && !m_zmqClient->isConnected()) {
-        m_miningLog->append("[INFO] 🔗 Attempting ZMQ connection to local daemon...");
-        bool connected = m_zmqClient->connect("127.0.0.1", 18072);
-        if (connected) {
-          m_miningLog->append("[INFO] ✅ Connected to local daemon ZMQ");
-        } else {
-          m_miningLog->append("[WARNING] Failed to connect to local ZMQ, will retry...");
-          // Retry local connection after a delay instead of falling back to remote
-          QTimer::singleShot(3000, [this]() {
-            if (m_zmqClient && !m_zmqClient->isConnected()) {
-              m_miningLog->append("[INFO] 🔄 Retrying ZMQ connection to local daemon...");
-              bool connected = m_zmqClient->connect("127.0.0.1", 18072);
-              if (connected) {
-                m_miningLog->append("[INFO] ✅ Connected to local daemon ZMQ on retry");
-              } else {
-                m_miningLog->append("[WARNING] Still failed to connect to local ZMQ, using remote endpoints");
-                m_zmqClient->connect(qsf::MAINNET);
-              }
-            }
-          });
-        }
-      }
-    });
+    // ZMQ connection attempts disabled
     
     // Initialize mining worker
     m_miningWorker = std::make_unique<MiningWorker>();
@@ -365,31 +290,7 @@ namespace qsf
     connect(m_miningThread, &QThread::started, m_miningWorker.get(), &MiningWorker::startMining);
     connect(m_miningWorker.get(), &MiningWorker::miningStopped, m_miningThread, &QThread::quit);
     
-    // Check initial daemon status and auto-start if needed
-    QTimer::singleShot(1500, [this]() {
-      // On Linux, do a quick check for running daemon process
-#ifndef Q_OS_WIN
-      QProcess checkProcess;
-      checkProcess.start("pgrep", QStringList() << "-f" << "qsf.*18071|qsf.*18072|qsf.*18070");
-      checkProcess.waitForFinished(1000);
-      bool daemonProcessFound = (checkProcess.exitCode() == 0 && 
-                                 !checkProcess.readAllStandardOutput().trimmed().isEmpty());
-      
-      if (daemonProcessFound) {
-        // Daemon process found on Linux, verify it's responding
-        m_miningLog->append("[INFO] 🔍 Daemon process detected, verifying connection...");
-        checkDaemonStatus();
-        return;
-      }
-#endif
-      
-      // No daemon process found, auto-start one
-      // onStartDaemon() will first try to connect to existing daemon, then start if needed
-      if (!m_daemonStartInProgress) {
-        m_miningLog->append("[INFO] 🔍 No daemon detected. Auto-starting local daemon...");
-        onStartDaemon();
-      }
-    });
+    // No local daemon auto-start or process scanning in simplified mode
     
     // Add daemon crash recovery
     connect(this, &MainWindow::daemonCrashed, this, [this]() {
@@ -405,7 +306,7 @@ namespace qsf
     });
     
     // Set window properties
-    setWindowTitle("QSF Quantum-Safe GUI Miner v2.1");
+    setWindowTitle("QSF GUI Wallet");
     setMinimumSize(1000, 700);
     // Try to set window icon again with fallback paths
     QStringList fallbackIconPaths = {
@@ -981,19 +882,16 @@ namespace qsf
     
     QPushButton* sendBtn = new QPushButton("Send QSF", actionsGroup);
     QPushButton* receiveBtn = new QPushButton("Receive QSF", actionsGroup);
-    QPushButton* mineBtn = new QPushButton("Start Mining", actionsGroup);
+    // Mining disabled in wallet-only mode
     
     actionsLayout->addWidget(sendBtn);
     actionsLayout->addWidget(receiveBtn);
-    actionsLayout->addWidget(mineBtn);
+    // no mining button
     
     overviewLayout->addWidget(actionsGroup);
 
     // Wire quick actions
-    connect(mineBtn, &QPushButton::clicked, [this]() {
-      m_tabWidget->setCurrentIndex(1); // Mining tab
-      onStartMining();
-    });
+    // no mining action
     connect(sendBtn, &QPushButton::clicked, this, &MainWindow::onQuickSend);
     connect(receiveBtn, &QPushButton::clicked, this, &MainWindow::onQuickReceive);
     
@@ -1162,7 +1060,11 @@ namespace qsf
     miningLayout->setSpacing(18);
     miningLayout->setContentsMargins(16, 16, 16, 16);
     scrollArea->setWidget(miningWidget);
-    m_tabWidget->addTab(scrollArea, "Mining");
+    // Remove Mining tab in wallet-only mode
+    int idx = m_tabWidget->indexOf(scrollArea);
+    if (idx != -1) {
+      m_tabWidget->removeTab(idx);
+    }
   }
 
   void MainWindow::setupQuantumSafeTab()
@@ -1235,11 +1137,7 @@ namespace qsf
     QGroupBox* generalGroup = new QGroupBox("General Settings", settingsWidget);
     QGridLayout* generalLayout = new QGridLayout(generalGroup);
     
-    generalLayout->addWidget(new QLabel("Default Mining Mode:"), 0, 0);
-    QComboBox* defaultMiningMode = new QComboBox(settingsWidget);
-    defaultMiningMode->addItem("Solo Mining");
-    defaultMiningMode->addItem("Pool Mining");
-    generalLayout->addWidget(defaultMiningMode, 0, 1);
+    // Mining mode removed in wallet-only mode
     
     generalLayout->addWidget(new QLabel("Algorithm:"), 1, 0);
     QLabel* defaultAlgorithmLabel = new QLabel("RandomX (Quantum-Safe) - Fixed", settingsWidget);
@@ -1258,10 +1156,7 @@ namespace qsf
     defaultDaemonUrl->setText("http://127.0.0.1:18071");
     networkLayout->addWidget(defaultDaemonUrl, 0, 1);
     
-    networkLayout->addWidget(new QLabel("Default Pool URL:"), 1, 0);
-    QLineEdit* defaultPoolUrl = new QLineEdit(settingsWidget);
-    defaultPoolUrl->setText("stratum+tcp://pool.qsfcoin.com:3333");
-    networkLayout->addWidget(defaultPoolUrl, 1, 1);
+    // Pool URL removed in wallet-only mode
     
     settingsLayout->addWidget(networkGroup);
     
@@ -1289,8 +1184,7 @@ namespace qsf
 
   void MainWindow::connectSignals()
   {
-    connect(m_startMiningBtn, &QPushButton::clicked, this, &MainWindow::onStartMining);
-    connect(m_stopMiningBtn, &QPushButton::clicked, this, &MainWindow::onStopMining);
+    // Mining signals removed in wallet-only mode
     connect(m_generateWalletBtn, &QPushButton::clicked, this, &MainWindow::onGenerateWallet);
     connect(m_recoverWalletBtn, &QPushButton::clicked, this, &MainWindow::onRecoverWallet);
     // Add open wallet action if a button/menu exists (fallback: bind to Ctrl+O)
@@ -1305,12 +1199,10 @@ namespace qsf
     //         this, &MainWindow::onNetworkChanged);
     
     // Connect mining mode change to show/hide appropriate fields
-    connect(m_miningModeCombo, QOverload<const QString &>::of(&QComboBox::currentTextChanged),
-            this, &MainWindow::onMiningModeChanged);
+    // Mining mode change disabled
     
     // Connect daemon management
-    connect(m_startDaemonBtn, &QPushButton::clicked, this, &MainWindow::onStartDaemon);
-    connect(m_stopDaemonBtn, &QPushButton::clicked, this, &MainWindow::onStopDaemon);
+    // Daemon start/stop disabled
     
     // Initialize field visibility
     onMiningModeChanged(m_miningModeCombo->currentText());
@@ -2335,43 +2227,10 @@ namespace qsf
         m_miningLog->append("[ERROR] ❌ HTTP start_mining failed: " + msg);
         // If daemon does not expose mining RPC, try alternative approaches
         if (msg.contains("Method not found", Qt::CaseInsensitive) || msg.contains("Not found", Qt::CaseInsensitive)) {
-          m_miningLog->append("[INFO] ℹ️ Daemon does not support start_mining RPC, trying alternative approach...");
-          
-          // Try to use standalone mining instead of daemon mining
-          if (startStandaloneMining()) {
-            m_miningLog->append("[INFO] ✅ Started standalone mining successfully");
-            m_startTime = QDateTime::currentSecsSinceEpoch();
-            updateMiningStatus(true);
-            return;
-          }
-          
-          // If standalone mining fails, offer to start local daemon
-          if (tryConnectToExistingDaemon()) {
-            QMessageBox::information(this, "Mining Not Supported",
-                                     "The connected daemon (" + daemonUrl + ") does not expose start_mining via JSON-RPC.\n\n"
-                                     "Standalone mining is not available. You can mine by starting the daemon with --start-mining and --mining-threads from the command line, or switch to a local daemon managed by the GUI.");
-            return;
-          }
-          
-          // Require a wallet address before offering to auto-start
-          if (walletAddress.isEmpty()) {
-            QMessageBox::warning(this, "Wallet Required", "Please create or enter a wallet address before starting mining.");
-            return;
-          }
-          
-          auto res = QMessageBox::question(this,
-                                            "Start Local Daemon?",
-                                            "The current daemon does not support mining via RPC.\n\n"
-                                            "Would you like to start a local daemon with mining enabled now?",
-                                            QMessageBox::Yes | QMessageBox::No,
-                                            QMessageBox::Yes);
-          if (res == QMessageBox::Yes) {
-            m_walletAddress = walletAddress;
-            m_miningThreads = threads;
-            if (!autoStartLocalDaemon()) {
-              QMessageBox::critical(this, "Mining Error", "Could not start local daemon for mining. Check if another daemon is running.");
-            }
-          }
+          // Non-blocking notice; align with Monero GUI: user starts mining on daemon manually
+          m_miningLog->append("[INFO] ℹ️ This daemon does not expose start_mining via JSON-RPC. Start mining on the daemon manually (e.g. --start-mining --mining-threads).");
+          if (m_startMiningBtn) m_startMiningBtn->setEnabled(false);
+          if (m_stopMiningBtn) m_stopMiningBtn->setEnabled(false);
         } else {
           QMessageBox::critical(this, "Mining Error", msg);
         }
@@ -3035,80 +2894,46 @@ namespace qsf
   // Daemon Management Slots
   void MainWindow::onStartDaemon()
   {
-    m_miningLog->append("[INFO] 🚀 Starting QSF Standalone daemon management...");
-    
-    // Ensure local config exists
-    ensureLocalConfigExists();
-    
-    // Strategy 1: Try to connect to existing daemon first (most common case)
-    m_miningLog->append("[DEBUG] 🔍 Checking for existing daemon...");
-    if (detectAndHandleExistingDaemon()) {
-      m_miningLog->append("[INFO] ✅ Connected to existing local daemon");
-      m_daemonUrlEdit->setText("http://127.0.0.1:18071");
-      onDaemonStatusChanged(true);
-      m_connectionLabel->setText("Connected (Local)");
-      m_connectionLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
-      return;
+    m_miningLog->append("[INFO] 🔗 Connecting to external daemon...");
+    // Read daemon URL and normalize
+    QString urlText = m_daemonUrlEdit->text().trimmed();
+    if (urlText.isEmpty()) {
+      urlText = "http://127.0.0.1:18071";
+      m_daemonUrlEdit->setText(urlText);
     }
-    
-    m_miningLog->append("[DEBUG] 🔍 No existing daemon found, will start new daemon");
-    
-    // Strategy 2: Start our own local daemon only if no existing daemon is working
-    if (!m_localDaemonProcess || m_localDaemonProcess->state() == QProcess::NotRunning) {
-      m_miningLog->append("[INFO] 🚀 Starting new local daemon...");
-      if (autoStartLocalDaemon()) {
-        m_miningLog->append("[INFO] ✅ Local daemon started successfully");
-        m_miningLog->append("[INFO] 🎯 Full mining and wallet control available");
-        m_daemonUrlEdit->setText("http://127.0.0.1:18071");
+    m_daemonUrl = urlText;
+    // Probe daemon via get_info
+    QNetworkAccessManager* nam = new QNetworkAccessManager(this);
+    QUrl url(m_daemonUrl);
+    if (url.path().isEmpty()) url.setPath("/json_rpc");
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    QJsonObject rpc; rpc["jsonrpc"] = "2.0"; rpc["id"] = "0"; rpc["method"] = "get_info"; rpc["params"] = QJsonObject();
+    QNetworkReply* r = nam->post(req, QJsonDocument(rpc).toJson());
+    connect(r, &QNetworkReply::finished, [this, r, nam]() {
+      const bool ok = (r->error() == QNetworkReply::NoError);
+      r->deleteLater(); nam->deleteLater();
+      if (!ok) {
+        m_miningLog->append("[ERROR] ❌ Failed to connect to daemon. Ensure your node is running and RPC is accessible.");
+        onDaemonStatusChanged(false);
         return;
-      } else {
-        m_miningLog->append("[ERROR] ❌ Failed to start local daemon");
       }
-    }
-    
-    // Strategy 3: Fall back to remote daemon (for mining only, wallet will be limited)
-    m_miningLog->append("[WARNING] ⚠️ Could not start local daemon, falling back to remote connection");
-    m_miningLog->append("[WARNING] ⚠️ Wallet features will be limited without local daemon");
-    connectToRemoteDaemon();
+      m_miningLog->append("[INFO] ✅ Connected to daemon");
+      onDaemonStatusChanged(true);
+    });
   }
 
   void MainWindow::onStopDaemon()
   {
-    m_miningLog->append("[INFO] 🛑 Stopping standalone daemon...");
-
+    m_miningLog->append("[INFO] 🔌 Disconnecting from external daemon...");
     // Stop mining first
-    if (m_isMining) {
-      onStopMining();
-    }
-
-    // Stop only the daemon we started (same approach on Windows and Linux)
-    if (m_localDaemonProcess && m_localDaemonProcess->state() != QProcess::NotRunning) {
-      m_miningLog->append("[INFO] 🛑 Terminating local daemon process...");
-      m_localDaemonProcess->terminate();
-      if (!m_localDaemonProcess->waitForFinished(5000)) {
-        m_miningLog->append("[INFO] 🛑 Force killing local daemon process...");
-        m_localDaemonProcess->kill();
-        m_localDaemonProcess->waitForFinished(2000);
-      }
-      m_miningLog->append("[INFO] ✅ Local daemon process stopped");
-      
-      // Clear the process reference but don't delete it yet
-      m_localDaemonProcess->disconnect();
-      m_localDaemonProcess = nullptr;
-    } else {
-      m_miningLog->append("[INFO] ℹ️ No local daemon process owned by GUI");
-    }
-    
-    // Update status
+    if (m_isMining) onStopMining();
     m_daemonRunning = false;
     onDaemonStatusChanged(false);
-    
-    // Disconnect wallet from daemon
     if (m_walletManager) {
       m_walletManager->setDaemonAddress("");
+      m_walletManager->onDaemonStatusChanged(false);
       m_miningLog->append("[INFO] 🔗 Wallet disconnected from daemon");
-      
-      // Update wallet status indicator
       if (m_walletStatusLabel) {
         m_walletStatusLabel->setText("❌ No Daemon");
         m_walletStatusLabel->setStyleSheet("color: #ff6b6b; font-weight: bold; font-size: 12px;");
@@ -3352,9 +3177,33 @@ namespace qsf
 
   void MainWindow::onDaemonStatusChanged(bool isRunning)
   {
+    static bool simplifiedApplied = false;
+    if (!simplifiedApplied) {
+      // Hide/remove controls not used in Monero-GUI-like mode
+      if (m_startDaemonBtn) m_startDaemonBtn->setVisible(false);
+      if (m_stopDaemonBtn) m_stopDaemonBtn->setVisible(false);
+      if (m_poolAddressLabel) m_poolAddressLabel->setVisible(false);
+      if (m_poolAddressEdit) m_poolAddressEdit->setVisible(false);
+      // Hide peer/network/misc mining stats not supported anymore
+      if (m_peerCountLabel) m_peerCountLabel->setVisible(false);
+      if (m_networkHashrateLabel) m_networkHashrateLabel->setVisible(false);
+      if (m_difficultyLabel) m_difficultyLabel->setVisible(false);
+      if (m_blockHeightLabel) m_blockHeightLabel->setVisible(false);
+      if (m_hashRateLabel) m_hashRateLabel->setVisible(false);
+      if (m_hashrateLabel) m_hashrateLabel->setVisible(false);
+      if (m_acceptedSharesLabel) m_acceptedSharesLabel->setVisible(false);
+      if (m_rejectedSharesLabel) m_rejectedSharesLabel->setVisible(false);
+      if (m_uptimeLabel) m_uptimeLabel->setVisible(false);
+      // Mining controls are gated only by successful RPC; start disabled
+      if (m_startMiningBtn) m_startMiningBtn->setEnabled(false);
+      if (m_stopMiningBtn) m_stopMiningBtn->setEnabled(false);
+      simplifiedApplied = true;
+    }
+    
     m_daemonRunning = isRunning;
     
     if (isRunning) {
+      m_disconnectStrikes = 0; // reset debounce
       m_daemonStatusLabel->setText("✅ Running");
       m_daemonStatusLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
       m_startDaemonBtn->setEnabled(false);
@@ -3362,9 +3211,17 @@ namespace qsf
       
       // Update wallet manager to use local daemon
       if (m_walletManager) {
-        m_walletManager->setDaemonAddress("127.0.0.1:18071");
+        // derive host:port for libwallet
+        QString addr = m_daemonUrlEdit->text().trimmed();
+        if (addr.startsWith("http://", Qt::CaseInsensitive)) addr = addr.mid(7);
+        if (addr.startsWith("https://", Qt::CaseInsensitive)) addr = addr.mid(8);
+        int slash = addr.indexOf('/');
+        if (slash != -1) addr = addr.left(slash);
+        if (addr.isEmpty()) addr = "127.0.0.1:18071";
+        m_walletManager->setDaemonAddress(addr);
         m_walletManager->onDaemonStatusChanged(true);
-        m_miningLog->append("[INFO] 🔗 Wallet connected to local daemon");
+        m_walletManager->forceRefreshOnDaemonAvailable();
+        m_miningLog->append("[INFO] 🔗 Wallet connected to daemon at " + addr);
         
         // Update wallet status indicator
         if (m_walletStatusLabel) {
@@ -3372,33 +3229,17 @@ namespace qsf
           m_walletStatusLabel->setStyleSheet("color: #00d4aa; font-weight: bold; font-size: 12px;");
         }
       }
-      
       // Enable mining only when a wallet is opened/ready
       bool walletReady = (m_walletManager && m_walletManager->hasWallet());
       m_startMiningBtn->setEnabled(walletReady);
-      
       // Start peer count updates after a short delay
       QTimer::singleShot(1000, [this]() {
         updatePeerCount();
-        m_miningLog->append("[INFO] Initial peer count update triggered");
       });
-      
-      // Force ZMQ to switch to the local daemon when it starts, even if already connected to seeds
+      // Prefer ZMQ connection to the configured daemon if available; otherwise keep current behavior
       if (m_zmqClient) {
-        m_miningLog->append("[INFO] 🔗 Switching ZMQ to local daemon (127.0.0.1:18072)...");
-        m_zmqClient->disconnect();
-        bool connected = m_zmqClient->connect("127.0.0.1", 18072);
-        if (connected) {
-          m_miningLog->append("[INFO] ✅ ZMQ connected to local daemon");
-        } else {
-          m_miningLog->append("[WARNING] Failed to connect to local ZMQ, trying network endpoints...");
-          connected = m_zmqClient->connect(qsf::MAINNET);
-          if (!connected) {
-            m_miningLog->append("[WARNING] Failed to connect to any ZMQ endpoint, using HTTP fallback");
-          }
-        }
+        // leave as-is; external daemon ZMQ may not be exposed
       }
-      
       // Update the generated keys display with daemon status
       m_generatedKeysDisplay->setText(
         QString("🔐 Quantum-Safe Key Generation Status:\n\n"
@@ -3407,19 +3248,23 @@ namespace qsf
         "🔗 Connection: Active\n"
         "⚡ Mining Ready: Yes\n"
         "💰 Wallet Ready: Yes\n\n"
-        "💡 Your standalone daemon is ready for quantum-safe operations!").arg("Mainnet")
+        "💡 Connected to external daemon for quantum-safe operations.").arg("Mainnet")
       );
     } else {
+      // debounce transient disconnects to avoid UI flapping and wallet zeroing
+      m_disconnectStrikes++;
+      if (m_disconnectStrikes < 3) {
+        return;
+      }
       m_daemonStatusLabel->setText("❌ Stopped");
       m_daemonStatusLabel->setStyleSheet("color: #ff6b6b; font-weight: bold;");
       m_startDaemonBtn->setEnabled(true);
       m_stopDaemonBtn->setEnabled(false);
       m_startMiningBtn->setEnabled(false);
-      
-      // Notify wallet manager that daemon stopped
+      // Do not clear wallet daemon address on transient disconnects.
+      // The wallet will keep trying to refresh when the daemon comes back.
       if (m_walletManager) {
         m_walletManager->onDaemonStatusChanged(false);
-        m_walletManager->setDaemonAddress("");
       }
       
       // Disconnect ZMQ when daemon stops
@@ -3433,196 +3278,31 @@ namespace qsf
         "🌐 Network: %1\n"
         "🔗 Connection: Inactive\n"
         "⚡ Mining Ready: No\n\n"
-        "💡 Start the daemon to enable quantum-safe operations").arg("Mainnet")
+        "💡 Start your external daemon to enable quantum-safe operations").arg("Mainnet")
       );
     }
   }
 
   void MainWindow::startMiningStatusMonitoring()
   {
-    // Create a timer for mining status updates
-    QTimer* statusTimer = new QTimer(this);
-    connect(statusTimer, &QTimer::timeout, [this, statusTimer]() {
-      // Check if ZMQ client is connected and mining is active
-      if (m_zmqClient && m_zmqClient->isConnected()) {
-        QJsonObject result = m_zmqClient->getMiningStatus();
-        bool active = result["active"].toBool();
-        double speed = result["speed"].toDouble();
-        
-        // Update mining status if it changed
-        if (!active && m_isMining) {
-          m_miningLog->append("[INFO] ⚠️ Mining stopped by daemon");
-          updateMiningStatus(false);
-        }
-        
-        // Update hash rate if it changed
-        if (speed != m_currentHashRate) {
-          m_currentHashRate = speed;
-          m_hashRateLabel->setText(QString::number(speed, 'f', 2) + " H/s");
-        }
-        
-        // Get additional mining statistics
-        QJsonObject infoResult = m_zmqClient->getInfo();
-        if (!infoResult.isEmpty() && infoResult.contains("info")) {
-          QJsonObject info = infoResult["info"].toObject();
-          
-          // Update difficulty
-          if (info.contains("difficulty")) {
-            double difficulty = info["difficulty"].toDouble();
-            m_difficultyLabel->setText(QString::number(difficulty / 1000, 'f', 2) + "K");
-            m_miningLog->append(QString("[DEBUG] 📊 Difficulty updated: %1").arg(difficulty));
-          }
-          
-          // Update block height
-          if (info.contains("height")) {
-            int height = info["height"].toInt();
-            m_blockHeightLabel->setText(QString::number(height));
-            m_miningLog->append(QString("[DEBUG] 📊 Block height updated: %1").arg(height));
-          }
-          
-          // Update network hashrate (calculate from difficulty)
-          if (info.contains("difficulty") && info.contains("target")) {
-            double difficulty = info["difficulty"].toDouble();
-            double target = info["target"].toDouble();
-            if (target > 0) {
-              double networkHashrate = difficulty / target; // Approximate network hashrate
-              if (networkHashrate > 1000000000000) {
-                m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000000000.0, 'f', 2) + " TH/s");
-              } else if (networkHashrate > 1000000000) {
-                m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000000.0, 'f', 2) + " GH/s");
-              } else if (networkHashrate > 1000000) {
-                m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000.0, 'f', 2) + " MH/s");
-              } else {
-                m_networkHashrateLabel->setText(QString::number(networkHashrate, 'f', 2) + " H/s");
-              }
-              m_miningLog->append(QString("[DEBUG] 📊 Network hashrate updated: %1").arg(networkHashrate));
-            }
-          }
-          
-          // Block reward is now calculated dynamically in updateMiningStatistics()
-        } else {
-          m_miningLog->append("[DEBUG] 📊 No mining stats data received from ZMQ");
-        }
-      } else {
-        // Fallback to HTTP polling for mining status
-        QNetworkAccessManager* nam = new QNetworkAccessManager(this);
-        QNetworkRequest req(QUrl(m_daemonUrlEdit->text() + "/json_rpc"));
-        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-        
-        QJsonObject rpc;
-        rpc["jsonrpc"] = "2.0";
-        rpc["id"] = "0";
-        rpc["method"] = "get_info";
-        rpc["params"] = QJsonObject();
-        
-        QJsonDocument doc(rpc);
-        QNetworkReply* r = nam->post(req, doc.toJson());
-        connect(r,&QNetworkReply::finished,[this,r,nam](){
-          if (r->error() == QNetworkReply::NoError) {
-            QJsonDocument responseDoc = QJsonDocument::fromJson(r->readAll());
-            if (responseDoc.isObject()) {
-              QJsonObject response = responseDoc.object();
-              if (response.contains("result")) {
-                QJsonObject result = response["result"].toObject();
-                if (result.contains("info")) {
-                  QJsonObject info = result["info"].toObject();
-                  
-                  // Update difficulty
-                  if (info.contains("difficulty")) {
-                    double difficulty = info["difficulty"].toDouble();
-                    m_difficultyLabel->setText(QString::number(difficulty / 1000, 'f', 2) + "K");
-                  }
-                  
-                  // Update block height
-                  if (info.contains("height")) {
-                    int height = info["height"].toInt();
-                    m_blockHeightLabel->setText(QString::number(height));
-                  }
-                  
-                  // Update network hashrate (calculate from difficulty)
-                  if (info.contains("difficulty") && info.contains("target")) {
-                    double difficulty = info["difficulty"].toDouble();
-                    double target = info["target"].toDouble();
-                    if (target > 0) {
-                      double networkHashrate = difficulty / target; // Approximate network hashrate
-                      if (networkHashrate > 1000000000000) {
-                        m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000000000.0, 'f', 2) + " TH/s");
-                      } else if (networkHashrate > 1000000000) {
-                        m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000000.0, 'f', 2) + " GH/s");
-                      } else if (networkHashrate > 1000000) {
-                        m_networkHashrateLabel->setText(QString::number(networkHashrate / 1000000.0, 'f', 2) + " MH/s");
-                      } else {
-                        m_networkHashrateLabel->setText(QString::number(networkHashrate, 'f', 2) + " H/s");
-                      }
-                    }
-                  }
-                  
-                  // Block reward display removed
-                }
-              }
-            }
-          }
-          r->deleteLater(); 
-          nam->deleteLater(); 
-        });
-      }
-    });
-    
-    statusTimer->start(2000); // Update every 2 seconds
+    // Simplified: disable mining status polling to improve responsiveness
   }
 
   void MainWindow::updatePeerCount()
   {
-    m_miningLog->append("[DEBUG] Updating peer count via ZMQ...");
-    
-    // Try ZMQ first for real-time updates
-    if (m_zmqClient && m_zmqClient->isConnected()) {
-      QJsonObject result = m_zmqClient->getInfo();
-      
-      if (!result.isEmpty()) {
-        QJsonObject info = result["info"].toObject();
-        int incomingConnections = info["incoming_connections_count"].toInt();
-        int outgoingConnections = info["outgoing_connections_count"].toInt();
-        int totalConnections = incomingConnections + outgoingConnections;
-        int height = info["height"].toInt();
-        
-        // Update peer count display
-        QString peerText = QString("%1 (%2 in, %3 out)").arg(totalConnections).arg(incomingConnections).arg(outgoingConnections);
-        m_peerCountLabel->setText(peerText);
-        
-        // Update connection status
-        if (totalConnections > 0) {
-          m_peerCountLabel->setStyleSheet("color: #00d4aa; font-weight: bold;");
-          m_connectionLabel->setText("Connected");
-          
-          // Update daemon status if not already set
-          if (!m_daemonRunning) {
-            m_daemonStatusLabel->setText("Running");
-            m_daemonRunning = true;
-          }
-          
-          // Update block height
-          if (height > 0) {
-            m_blockHeightLabel->setText(QString::number(height));
-          }
-        } else {
-          m_peerCountLabel->setStyleSheet("color: #ff6b6b; font-weight: bold;");
-          m_connectionLabel->setText("Disconnected");
-        }
-        
-        m_miningLog->append(QString("[DEBUG] ZMQ peer count: %1").arg(peerText));
-        return;
-      }
+    // Simplified: disable peer count polling to avoid RPC errors and freezes
+    if (m_peerCountLabel) {
+      m_peerCountLabel->setText("N/A");
+      m_peerCountLabel->setStyleSheet("color: #999999;");
     }
-    
-    // Fallback to HTTP if ZMQ is not available
-    updatePeerCountHttp();
+    if (m_connectionLabel && m_daemonRunning) {
+      m_connectionLabel->setText("Connected");
+    }
+    return;
   }
 
   void MainWindow::updatePeerCountHttp()
   {
-    m_miningLog->append("[DEBUG] Updating peer count via HTTP...");
-    
     QString daemonUrl = m_daemonUrlEdit->text();
     if (daemonUrl.isEmpty()) {
       m_peerCountLabel->setText("No URL");
@@ -3646,40 +3326,30 @@ namespace qsf
     connect(reply, &QNetworkReply::finished, [this, reply]() {
       if (reply->error() != QNetworkReply::NoError) {
         m_peerCountLabel->setText("Error");
-        m_miningLog->append(QString("[DEBUG] HTTP peer count error: %1").arg(reply->errorString()));
         reply->deleteLater();
         return;
       }
       
       QByteArray responseData = reply->readAll();
       reply->deleteLater();
-      
-      m_miningLog->append(QString("[DEBUG] HTTP response received, size: %1 bytes").arg(responseData.size()));
-      
+
       if (responseData.isEmpty()) {
         m_peerCountLabel->setText("No Data");
-        m_miningLog->append("[DEBUG] Empty HTTP response data");
         return;
       }
-      
-      QString responsePreview = QString::fromUtf8(responseData.left(100));
-      m_miningLog->append(QString("[DEBUG] HTTP response preview: %1...").arg(responsePreview));
-      
+
       QJsonParseError parseError;
       QJsonDocument responseDoc = QJsonDocument::fromJson(responseData, &parseError);
       
       if (parseError.error != QJsonParseError::NoError) {
         m_peerCountLabel->setText("Parse Error");
-        m_miningLog->append(QString("[DEBUG] HTTP JSON parse error: %1").arg(parseError.errorString()));
         return;
       }
       
       QJsonObject response = responseDoc.object();
-      m_miningLog->append(QString("[DEBUG] HTTP response object keys: %1").arg(response.keys().join(", ")));
       
       if (response.contains("result")) {
         QJsonObject result = response["result"].toObject();
-        m_miningLog->append(QString("[DEBUG] HTTP result object keys: %1").arg(result.keys().join(", ")));
         
         if (result.contains("info")) {
           QJsonObject info = result["info"].toObject();
@@ -3687,8 +3357,6 @@ namespace qsf
           int outgoingConnections = info["outgoing_connections_count"].toInt();
           int totalConnections = incomingConnections + outgoingConnections;
           int height = info["height"].toInt();
-          
-          m_miningLog->append(QString("[DEBUG] HTTP parsed connections: in=%1, out=%2, total=%3").arg(incomingConnections).arg(outgoingConnections).arg(totalConnections));
           
           QString peerText = QString("%1 (%2 in, %3 out)").arg(totalConnections).arg(incomingConnections).arg(outgoingConnections);
           
@@ -4058,54 +3726,8 @@ namespace qsf
   }
 
   bool MainWindow::tryConnectToExistingDaemon() {
-    QNetworkAccessManager* nam = new QNetworkAccessManager(this);
-    QUrl url(m_daemonUrlEdit->text().trimmed());
-    if (url.isEmpty() || !url.isValid()) url = QUrl("http://127.0.0.1:18071/json_rpc");
-    if (url.path().isEmpty()) url.setPath("/json_rpc");
-    QNetworkRequest req(url);
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    req.setTransferTimeout(2000); // 2 second timeout for faster detection
-    
-    QJsonObject rpc;
-    rpc["jsonrpc"] = "2.0";
-    rpc["id"] = "0";
-    rpc["method"] = "get_info";
-    rpc["params"] = QJsonObject();
-    
-    QJsonDocument doc(rpc);
-    QNetworkReply* reply = nam->post(req, doc.toJson());
-    
-    QEventLoop loop;
-    QTimer timeout;
-    timeout.setSingleShot(true);
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    connect(&timeout, &QTimer::timeout, &loop, &QEventLoop::quit);
-    timeout.start(2000); // 2 second timeout
-    loop.exec();
-    
-    bool success = false;
-    if (reply->error() == QNetworkReply::NoError) {
-      // Verify we got a valid response
-      QByteArray data = reply->readAll();
-      QJsonDocument responseDoc = QJsonDocument::fromJson(data);
-      if (!responseDoc.isNull() && responseDoc.isObject()) {
-        QJsonObject response = responseDoc.object();
-        if (response.contains("result") || response.contains("jsonrpc")) {
-          success = true;
-          m_miningLog->append("[INFO] ✅ Found existing local daemon (verified with get_info)");
-        }
-      }
-    } else {
-      // Log the specific error for debugging
-      QNetworkReply::NetworkError error = reply->error();
-      if (error != QNetworkReply::OperationCanceledError && error != QNetworkReply::TimeoutError) {
-        m_miningLog->append("[DEBUG] 🔍 Daemon connection check failed: " + reply->errorString());
-      }
-    }
-    
-    reply->deleteLater();
-    nam->deleteLater();
-    return success;
+    // Simplified external-daemon mode: avoid blocking checks; let connect flow handle status
+    return false;
   }
 
   bool MainWindow::autoStartLocalDaemon() {
@@ -4464,92 +4086,19 @@ namespace qsf
       return false;
     }
     
-    m_miningLog->append("[INFO] 🚀 Starting stand-alone mining...");
+    m_miningLog->append("[INFO] 🚀 Starting mining against external daemon...");
     m_miningLog->append("[INFO] 📍 Wallet address: " + m_walletAddress);
     m_miningLog->append("[INFO] 🔧 Threads: " + QString::number(m_miningThreads));
     
-    // Check if we already have a local daemon running
-    if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
-      m_miningLog->append("[INFO] ✅ Local daemon is already running, starting mining via console command");
-      const QString localUrl = "http://127.0.0.1:18071";
-      // Prefer console command since local daemon may not expose start_mining over JSON-RPC
-      QString cmd = QString("start_mining %1 %2\n").arg(m_walletAddress).arg(m_miningThreads);
-      m_localDaemonProcess->write(cmd.toUtf8());
-      // Enable hashrate logging on the daemon console if we own the process
-      QTimer::singleShot(1000, [this]() {
-        if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
-          m_localDaemonProcess->write("show_hr\n");
-        }
-      });
-      // Ensure ZMQ is connected to local daemon for stats
-      if (m_zmqClient && !m_zmqClient->isConnected()) {
-        m_zmqClient->connect("127.0.0.1", 18072);
-      }
-      // Start mining status worker thread if available
-      if (m_miningWorker && m_miningThread) {
-        m_miningWorker->setDaemonUrl(localUrl);
-        m_miningWorker->setWalletAddress(m_walletAddress);
-        m_miningWorker->setThreads(static_cast<uint32_t>(m_miningThreads));
-        if (m_miningThread->isRunning()) {
-          m_miningThread->quit();
-          m_miningThread->wait(1000);
-        }
-        m_miningThread->start();
-      }
-      m_daemonSupportsMiningRpc = false;
-      m_miningActive = true;
-      updateMiningStatus(true);
-      updateMiningControls();
-      return true;
-    }
-    
-    // First, check if daemon supports mining RPC
-    if (m_daemonRunning && checkDaemonMiningSupport(m_daemonUrl)) {
+    // Directly attempt JSON-RPC start; rely on response to determine support (no pre-probe)
+    if (m_daemonRunning) {
       m_daemonSupportsMiningRpc = true;
-      m_miningLog->append("[INFO] ✅ Daemon supports mining RPC, using daemon mining");
       startMiningWithDaemon(m_daemonUrl);
       return true;
-    } else if (m_daemonRunning) {
-      // Fallback: use console command on running local daemon
-      m_miningLog->append("[INFO] ⚠️ start_mining JSON-RPC not available, using console command");
-      if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
-        QString cmd = QString("start_mining %1 %2\n").arg(m_walletAddress).arg(m_miningThreads);
-        m_localDaemonProcess->write(cmd.toUtf8());
-        QTimer::singleShot(1000, [this]() {
-          if (m_localDaemonProcess && m_localDaemonProcess->state() == QProcess::Running) {
-            m_localDaemonProcess->write("show_hr\\n");
-          }
-        });
-        if (m_zmqClient && !m_zmqClient->isConnected()) {
-          m_zmqClient->connect("127.0.0.1", 18072);
-        }
-        m_miningActive = true;
-        updateMiningStatus(true);
-        updateMiningControls();
-        return true;
-      }
     }
-    
-    // If daemon doesn't support mining RPC or isn't running, start local daemon with mining
     m_daemonSupportsMiningRpc = false;
-    m_miningLog->append("[INFO] 🔄 Daemon doesn't support mining RPC, starting local daemon with mining");
-    bool ok = startLocalDaemonWithMining();
-    if (ok) {
-      // Start the mining worker to monitor hash rate against local daemon
-      if (m_miningWorker && m_miningThread) {
-        const QString daemonUrl = "http://127.0.0.1:18071";
-        m_miningWorker->setDaemonUrl(daemonUrl);
-        m_miningWorker->setWalletAddress(m_walletAddress);
-        m_miningWorker->setThreads(static_cast<uint32_t>(m_miningThreads));
-        if (m_miningThread->isRunning()) {
-          // If already running, stop and restart to rebind config cleanly
-          m_miningThread->quit();
-          m_miningThread->wait(1000);
-        }
-        m_miningThread->start();
-      }
-    }
-    return ok;
+    m_miningLog->append("[ERROR] ❌ Daemon not connected. Connect to a daemon before starting mining.");
+    return false;
   }
 
   void MainWindow::stopStandaloneMining() {
@@ -4837,13 +4386,6 @@ add-priority-node=45.63.123.244:18070
                 qDebug() << "Hashrate updated from daemon output:" << hashrate;
               }
             }
-            
-            // Auto-refresh wallet when new blocks are found
-            if (line.contains("Found block") && m_hasWallet && !m_walletAddress.isEmpty()) {
-              qDebug() << "New block found, refreshing wallet balance...";
-              // Delay refresh slightly to let the block propagate
-              QTimer::singleShot(2000, this, &MainWindow::refreshWalletBalance);
-            }
           }
         }
       }
@@ -4901,43 +4443,9 @@ add-priority-node=45.63.123.244:18070
   }
 
   bool MainWindow::checkDaemonMiningSupport(const QString& daemonUrl) {
-    QNetworkAccessManager nam;
-    QNetworkRequest req(QUrl(daemonUrl + "/json_rpc"));
-    req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
-    
-    QJsonObject rpc;
-    rpc["jsonrpc"] = "2.0";
-    rpc["id"] = "0";
-    rpc["method"] = "start_mining";
-    rpc["params"] = QJsonObject();
-    
-    QJsonDocument doc(rpc);
-    
-    QEventLoop loop;
-    QNetworkReply* reply = nam.post(req, doc.toJson());
-    
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
-    
-    if (reply->error() == QNetworkReply::NoError) {
-      QJsonDocument response = QJsonDocument::fromJson(reply->readAll());
-      QJsonObject obj = response.object();
-      
-      // If we get an error with "Method not found", the daemon doesn't support mining RPC
-      if (obj.contains("error")) {
-        QString errorMsg = obj["error"].toObject()["message"].toString();
-        if (errorMsg.contains("Method not found", Qt::CaseInsensitive)) {
-          reply->deleteLater();
-          return false;
-        }
-      }
-      
-      reply->deleteLater();
-      return true;
-    }
-    
-    reply->deleteLater();
-    return false;
+    // Non-blocking: assume support; startMiningWithDaemon will handle errors asynchronously
+    Q_UNUSED(daemonUrl);
+    return true;
   }
 
   void MainWindow::updateMiningControls() {
