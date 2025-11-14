@@ -253,7 +253,9 @@ namespace cryptonote {
     difficulty_type sum_work = 0;
     uint64_t previous_timestamp = timestamps[offset];
 
-    const int64_t clamp = static_cast<int64_t>(target_seconds) * 6;
+    // Reduced clamp from 6x to 3x to prevent extreme solvetimes from skewing difficulty
+    // This helps stabilize difficulty when blocks are slow
+    const int64_t clamp = static_cast<int64_t>(target_seconds) * 3;
 
     for (size_t i = 1; i <= limit; ++i)
     {
@@ -261,6 +263,8 @@ namespace cryptonote {
       int64_t solvetime = static_cast<int64_t>(timestamps[idx]) - static_cast<int64_t>(previous_timestamp);
       previous_timestamp = timestamps[idx];
 
+      // Clamp solvetime to prevent extreme values from affecting difficulty
+      // This prevents a single very slow or very fast block from skewing the entire calculation
       if (solvetime > clamp)
         solvetime = clamp;
       if (solvetime < -clamp)
@@ -272,14 +276,56 @@ namespace cryptonote {
       sum_work += work;
     }
 
+    // Better handling for small sample sizes - use average solvetime as fallback
     if (weighted_times <= 0)
-      weighted_times = 1;
+    {
+      // If weighted_times is negative or zero, calculate average solvetime
+      int64_t total_time = static_cast<int64_t>(timestamps.back()) - static_cast<int64_t>(timestamps[offset]);
+      if (total_time > 0 && limit > 0)
+      {
+        int64_t avg_solvetime = total_time / static_cast<int64_t>(limit);
+        // Use average solvetime with proper weighting
+        weighted_times = avg_solvetime * static_cast<int64_t>(limit * (limit + 1)) / 2;
+      }
+      if (weighted_times <= 0)
+        weighted_times = static_cast<int64_t>(target_seconds) * static_cast<int64_t>(limit * (limit + 1)) / 2;
+    }
 
     boost::multiprecision::uint256_t next = boost::multiprecision::uint256_t(sum_work) * target_seconds * limit;
     next = (next * (limit + 1)) / (2 * weighted_times);
 
     if (next == 0)
       return 1;
+
+    // Apply bounds checking to prevent extreme difficulty changes
+    // For small sample sizes, use more conservative bounds
+    // This prevents difficulty from skyrocketing or crashing
+    if (limit > 0 && cumulative_difficulties.size() > offset)
+    {
+      difficulty_type current_avg_diff = sum_work / limit;
+      
+      // More conservative bounds for small sample sizes
+      // With few blocks, limit changes more strictly to prevent instability
+      // Use integer arithmetic: 1.5x = *3/2, 2.0x = *2, 0.67x = *2/3, 0.5x = /2
+      boost::multiprecision::uint256_t max_diff_256, min_diff_256;
+      if (limit < 20)
+      {
+        // 1.5x max increase, 0.67x min decrease for small samples
+        max_diff_256 = (boost::multiprecision::uint256_t(current_avg_diff) * 3) / 2;
+        min_diff_256 = (boost::multiprecision::uint256_t(current_avg_diff) * 2) / 3;
+      }
+      else
+      {
+        // 2.0x max increase, 0.5x min decrease for larger samples
+        max_diff_256 = boost::multiprecision::uint256_t(current_avg_diff) * 2;
+        min_diff_256 = boost::multiprecision::uint256_t(current_avg_diff) / 2;
+      }
+      
+      if (next > max_diff_256)
+        next = max_diff_256;
+      if (next < min_diff_256)
+        next = min_diff_256;
+    }
 
     if (next > max128bit)
       return max128bit_difficulty;
