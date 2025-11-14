@@ -93,6 +93,15 @@
 
 #define DIFFICULTY_BLOCKS_ESTIMATE_TIMESPAN             DIFFICULTY_TARGET_V1 //just alias; used by tests
 
+// QuantumSafe Foundation PoW Recovery Fork parameters
+#define QSF_POW_FORK_HEIGHT_MAINNET                     31000
+#define QSF_POW_FORK_HEIGHT_TESTNET                     60800
+#define QSF_POW_FORK_HEIGHT_STAGENET                    47000
+#define QSF_POW_FORK_DIFFICULTY_RESET                   ((uint64_t)1000000)
+#define QSF_POW_TARGET_BLOCK_TIME                       120
+#define QSF_POW_MIN_BLOCK_TIME                          60
+#define QSF_POW_LWMA_WINDOW                             90
+
 
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
 #define BLOCKS_IDS_SYNCHRONIZING_MAX_COUNT              25000  //max blocks ids count in synchronizing
@@ -231,6 +240,7 @@
 #define HF_VERSION_BULLETPROOF_PLUS             15
 #define HF_VERSION_VIEW_TAGS                    15
 #define HF_VERSION_2021_SCALING                 15
+#define HF_VERSION_POW_RECOVERY                 17
 
 #define PER_KB_FEE_QUANTIZATION_DECIMALS        8
 #define CRYPTONOTE_SCALING_2021_FEE_ROUNDING_PLACES 2
@@ -308,6 +318,13 @@ namespace config
   const constexpr char HASH_KEY_MULTISIG_TX_PRIVKEYS[] = "multisig_tx_privkeys";
   const constexpr char HASH_KEY_TXHASH_AND_MIXRING[] = "txhashandmixring";
 
+  constexpr uint64_t POW_FORK_HEIGHT = QSF_POW_FORK_HEIGHT_MAINNET;
+  constexpr uint64_t POW_DIFFICULTY_RESET = QSF_POW_FORK_DIFFICULTY_RESET;
+  constexpr uint64_t POW_TARGET_BLOCK_TIME = QSF_POW_TARGET_BLOCK_TIME;
+  constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
+  constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
+  constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
+
   // Multisig
   const uint32_t MULTISIG_MAX_SIGNERS{16};
 
@@ -328,6 +345,13 @@ namespace config
     std::vector<std::string> const SEED_NODES = {
       "seeds.qsfnetwork.com"  // seed-test-qsf - Atlanta
     };
+
+    constexpr uint64_t POW_FORK_HEIGHT = QSF_POW_FORK_HEIGHT_TESTNET;
+    constexpr uint64_t POW_DIFFICULTY_RESET = QSF_POW_FORK_DIFFICULTY_RESET;
+    constexpr uint64_t POW_TARGET_BLOCK_TIME = QSF_POW_TARGET_BLOCK_TIME;
+    constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
+    constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
+    constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
   }
 
   namespace stagenet
@@ -347,6 +371,13 @@ namespace config
     std::vector<std::string> const SEED_NODES = {
       "seeds.qsfcoin.network" // qsf_seedstage - Chicago
     };
+
+    constexpr uint64_t POW_FORK_HEIGHT = QSF_POW_FORK_HEIGHT_STAGENET;
+    constexpr uint64_t POW_DIFFICULTY_RESET = QSF_POW_FORK_DIFFICULTY_RESET;
+    constexpr uint64_t POW_TARGET_BLOCK_TIME = QSF_POW_TARGET_BLOCK_TIME;
+    constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
+    constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
+    constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
   }
 }
 

@@ -30,6 +30,7 @@
 
 #include <unordered_set>
 #include <random>
+#include <cstring>
 #include "include_base_utils.h"
 #include "string_tools.h"
 using namespace epee;
@@ -696,6 +697,30 @@ namespace cryptonote
     return true;
   }
   //---------------------------------------------------------------
+  crypto::hash apply_randomx_fork_tweak(const crypto::hash &seed_hash, uint64_t seed_height, uint64_t activation_height)
+  {
+    if (seed_hash == crypto::null_hash || activation_height == 0 || seed_height < activation_height)
+      return seed_hash;
+
+    struct tweak_data
+    {
+      crypto::hash seed;
+      uint64_t height;
+      char tag[16];
+    } data{};
+
+    data.seed = seed_hash;
+    data.height = seed_height;
+    constexpr char label[] = "QSF-RX-TWEAK";
+    static_assert(sizeof(label) <= sizeof(data.tag));
+    std::memcpy(data.tag, label, sizeof(label));
+
+    crypto::hash tweaked;
+    crypto::cn_fast_hash(&data, sizeof(data), tweaked);
+    return tweaked;
+  }
+
+  //---------------------------------------------------------------
   void get_altblock_longhash(const block& b, crypto::hash& res, const crypto::hash& seed_hash)
   {
     blobdata bd = get_block_hashing_blob(b);
@@ -713,16 +738,18 @@ namespace cryptonote
     }
     if (major_version >= RX_BLOCK_VERSION)
     {
+      const uint64_t seed_height = rx_seedheight(height);
       crypto::hash hash;
       if (pbc != NULL)
       {
-        const uint64_t seed_height = rx_seedheight(height);
         hash = seed_hash ? *seed_hash : pbc->get_pending_block_id_by_height(seed_height);
       } else
       {
         memset(&hash, 0, sizeof(hash));  // only happens when generating genesis block
       }
-      rx_slow_hash(hash.data, bd.data(), bd.size(), res.data);
+      const uint64_t tweak_height = pbc ? pbc->get_randomx_tweak_height() : ::config::RANDOMX_TWEAK_HEIGHT;
+      const crypto::hash tweaked_seed = apply_randomx_fork_tweak(hash, seed_height, tweak_height);
+      rx_slow_hash(tweaked_seed.data, bd.data(), bd.size(), res.data);
     } else {
       const int pow_variant = major_version >= 7 ? major_version - 6 : 0;
       crypto::cn_slow_hash(bd.data(), bd.size(), res, pow_variant, height);

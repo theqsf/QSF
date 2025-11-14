@@ -967,6 +967,8 @@ namespace cryptonote
      * @return difficulty target
      */
     uint64_t get_difficulty_target() const;
+    uint64_t get_pow_fork_height() const;
+    uint64_t get_randomx_tweak_height() const;
 
     /**
      * @brief remove transactions from the transaction pool (if present)
@@ -1157,6 +1159,10 @@ namespace cryptonote
 #ifndef IN_UNIT_TESTS
   private:
 #endif
+    difficulty_type get_pow_fork_reset_difficulty() const;
+    bool is_pow_fork_active(uint64_t height) const;
+    uint64_t get_pow_min_block_time() const;
+    void trim_pow_difficulty_inputs(std::vector<uint64_t> &timestamps, std::vector<difficulty_type> &difficulties, uint64_t height) const;
 
     // TODO: evaluate whether or not each of these typedefs are left over from blockchain_storage
     typedef std::unordered_set<crypto::key_image> key_images_container;

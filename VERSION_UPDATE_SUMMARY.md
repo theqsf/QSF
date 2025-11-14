@@ -1,4 +1,17 @@
-# Version Update Summary for v2.1.2
+# Version Update Summary
+
+## ✅ v3.0.0 Files Updated
+
+### Release Notes
+- ✅ `RELEASE_NOTES_v3.0.0.md` – Documented the LWMA fork, difficulty reset, and RandomX tweak.
+
+### Core Version Files
+- ✅ `src/version.cpp.in` – Bumped `DEF_QSF_VERSION` to `"3.0.0.0"` and set release name to `"Entropy Reset"`.
+
+### Consensus
+- ✅ Network-specific fork heights wired: mainnet 31,000, stagenet 47,000, testnet 60,800.
+
+## ✅ Legacy Summary (v2.1.2)
 
 ## ✅ Files Updated
 

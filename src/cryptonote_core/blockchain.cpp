@@ -465,9 +465,13 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
 
   if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
   {
-    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
+    const uint64_t seed_height = crypto::rx_seedheight(m_db->height());
+    const crypto::hash seedhash = get_block_id_by_height(seed_height);
     if (seedhash != crypto::null_hash)
-      rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+    {
+      const crypto::hash tweaked_seed = apply_randomx_fork_tweak(seedhash, seed_height, get_randomx_tweak_height());
+      rx_set_main_seedhash(tweaked_seed.data, tools::get_max_concurrency());
+    }
   }
 
   return true;
@@ -587,8 +591,13 @@ void Blockchain::pop_blocks(uint64_t nblocks)
 
   if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
   {
-    const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(m_db->height()));
-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+    const uint64_t seed_height = crypto::rx_seedheight(m_db->height());
+    const crypto::hash seedhash = get_block_id_by_height(seed_height);
+    if (seedhash != crypto::null_hash)
+    {
+      const crypto::hash tweaked_seed = apply_randomx_fork_tweak(seedhash, seed_height, get_randomx_tweak_height());
+      rx_set_main_seedhash(tweaked_seed.data, tools::get_max_concurrency());
+    }
   }
 }
 //------------------------------------------------------------------
@@ -925,8 +934,36 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
     m_timestamps = timestamps;
     m_difficulties = difficulties;
   }
-  size_t target = get_difficulty_target();
-  difficulty_type diff = next_difficulty(timestamps, difficulties, target);
+  const uint64_t pow_height = get_pow_fork_height();
+  const bool pow_active = is_pow_fork_active(height);
+  const bool pow_switch_block = pow_height != 0 && height == pow_height;
+
+  if (pow_switch_block)
+  {
+    m_reset_timestamps_and_difficulties_height = true;
+  }
+
+  if (pow_active)
+  {
+    trim_pow_difficulty_inputs(timestamps, difficulties, height);
+  }
+
+  const size_t legacy_target = m_hardfork->get_current_version() < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
+  const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
+  difficulty_type diff = 0;
+
+  if (pow_switch_block)
+  {
+    diff = get_pow_fork_reset_difficulty();
+  }
+  else if (pow_active)
+  {
+    diff = next_difficulty_lwma(timestamps, difficulties, target);
+  }
+  else
+  {
+    diff = next_difficulty(timestamps, difficulties, target);
+  }
 
   CRITICAL_REGION_LOCAL1(m_difficulty_lock);
   m_difficulty_for_next_block_top_hash = top_hash;
@@ -979,10 +1016,24 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   difficulty_type last_cum_diff = start_height <= 1 ? start_height : difficulties.back();
   uint64_t drift_start_height = 0;
   std::vector<difficulty_type> new_cumulative_difficulties;
+  const uint64_t pow_height = get_pow_fork_height();
   for (uint64_t height = start_height; height <= top_height; ++height)
   {
+    const bool pow_active = pow_height != 0 && height >= pow_height;
+    const bool pow_switch_block = pow_height != 0 && height == pow_height;
+    if (pow_active)
+      trim_pow_difficulty_inputs(timestamps, difficulties, height);
     size_t target = get_ideal_hard_fork_version(height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
-    difficulty_type recalculated_diff = next_difficulty(timestamps, difficulties, target);
+    if (pow_active)
+      target = ::config::POW_TARGET_BLOCK_TIME;
+
+    difficulty_type recalculated_diff;
+    if (pow_switch_block)
+      recalculated_diff = get_pow_fork_reset_difficulty();
+    else if (pow_active)
+      recalculated_diff = next_difficulty_lwma(timestamps, difficulties, target);
+    else
+      recalculated_diff = next_difficulty(timestamps, difficulties, target);
 
     boost::multiprecision::uint256_t recalculated_cum_diff_256 = boost::multiprecision::uint256_t(recalculated_diff) + last_cum_diff;
     CHECK_AND_ASSERT_THROW_MES(recalculated_cum_diff_256 <= std::numeric_limits<difficulty_type>::max(), "Difficulty overflow!");
@@ -1195,7 +1246,8 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
         "%n", std::to_string(m_db->height() - split_height).c_str(), "%d", std::to_string(discarded_blocks).c_str(), NULL);
 
   const uint64_t new_height = m_db->height();
-  const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
+  const uint64_t seed_height = crypto::rx_seedheight(new_height);
+  const crypto::hash seedhash = get_block_id_by_height(seed_height);
 
   crypto::hash prev_id;
   if (!get_block_hash(alt_chain.back().bl, prev_id))
@@ -1213,8 +1265,11 @@ bool Blockchain::switch_to_alternative_blockchain(std::list<block_extended_info>
     }
   }
 
-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION && seedhash != crypto::null_hash)
+  {
+    const crypto::hash tweaked_seed = apply_randomx_fork_tweak(seedhash, seed_height, get_randomx_tweak_height());
+    rx_set_main_seedhash(tweaked_seed.data, tools::get_max_concurrency());
+  }
 
   MGINFO_GREEN("REORGANIZE SUCCESS! on height: " << split_height << ", new blockchain size: " << m_db->height());
   return true;
@@ -1283,10 +1338,22 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
     }
   }
 
-  // FIXME: This will fail if fork activation heights are subject to voting
-  size_t target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
+  const uint64_t pow_height = get_pow_fork_height();
+  const bool pow_active = is_pow_fork_active(bei.height);
+  const bool pow_switch_block = pow_height != 0 && bei.height == pow_height;
+  if (pow_active)
+  {
+    trim_pow_difficulty_inputs(timestamps, cumulative_difficulties, bei.height);
+  }
+  const size_t legacy_target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
+  const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
 
-  // calculate the difficulty target for the block and return it
+  if (pow_switch_block)
+    return get_pow_fork_reset_difficulty();
+
+  if (pow_active)
+    return next_difficulty_lwma(timestamps, cumulative_difficulties, target);
+
   return next_difficulty(timestamps, cumulative_difficulties, target);
 }
 //------------------------------------------------------------------
@@ -1615,6 +1682,14 @@ bool Blockchain::create_block_template(block& b, const crypto::hash *from_block,
   if (!check_block_timestamp(b, median_ts))
   {
     b.timestamp = median_ts;
+  }
+
+  if (is_pow_fork_active(height) && height > 0)
+  {
+    const uint64_t prev_ts = m_db->get_block_timestamp(height - 1);
+    const uint64_t min_ts = prev_ts + get_pow_min_block_time();
+    if (b.timestamp < min_ts)
+      b.timestamp = min_ts;
   }
 
   CHECK_AND_ASSERT_MES(diffic, false, "difficulty overhead.");
@@ -1955,6 +2030,18 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       return false;
     }
 
+    if (is_pow_fork_active(bei.height))
+    {
+      const uint64_t reference_ts = alt_chain.size() ? alt_chain.back().bl.timestamp : m_db->get_block_timestamp(prev_height);
+      const uint64_t min_ts = reference_ts + get_pow_min_block_time();
+      if (b.timestamp < min_ts)
+      {
+        MERROR_VER("Block with id: " << id << " for alternative chain violates minimum block time: " << b.timestamp << " < " << min_ts);
+        bvc.m_verifivation_failed = true;
+        return false;
+      }
+    }
+
     bool is_a_checkpoint;
     if(!m_checkpoints.check_block(bei.height, id, is_a_checkpoint))
     {
@@ -1987,7 +2074,8 @@ bool Blockchain::handle_alternative_block(const block& b, const crypto::hash& id
       {
         seedhash = get_block_id_by_height(seedheight);
       }
-      get_altblock_longhash(bei.bl, proof_of_work, seedhash);
+      crypto::hash tweaked_seed = apply_randomx_fork_tweak(seedhash, seedheight, get_randomx_tweak_height());
+      get_altblock_longhash(bei.bl, proof_of_work, tweaked_seed);
     } else
     {
       get_block_longhash(this, bei.bl, proof_of_work, bei.height, 0);
@@ -4143,6 +4231,18 @@ leave:
     goto leave;
   }
 
+  if (is_pow_fork_active(blockchain_height) && blockchain_height > 0)
+  {
+    const uint64_t prev_ts = m_db->get_block_timestamp(blockchain_height - 1);
+    const uint64_t min_ts = prev_ts + get_pow_min_block_time();
+    if (bl.timestamp < min_ts)
+    {
+      MERROR_VER("Block with id: " << id << " violates minimum block time: " << bl.timestamp << " < " << min_ts);
+      bvc.m_verifivation_failed = true;
+      goto leave;
+    }
+  }
+
   TIME_MEASURE_FINISH(t2);
   //check proof of work
   TIME_MEASURE_START(target_calculating_time);
@@ -4564,7 +4664,8 @@ leave:
     }
   }
 
-  const crypto::hash seedhash = get_block_id_by_height(crypto::rx_seedheight(new_height));
+  const uint64_t seed_height = crypto::rx_seedheight(new_height);
+  const crypto::hash seedhash = get_block_id_by_height(seed_height);
   send_miner_notifications(new_height, seedhash, id, already_generated_coins);
 
   // Make sure that txpool notifications happen BEFORE block notifications
@@ -4573,8 +4674,11 @@ leave:
   for (const auto& notifier: m_block_notifiers)
     notifier(new_height - 1, {std::addressof(bl), 1});
 
-  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION)
-    rx_set_main_seedhash(seedhash.data, tools::get_max_concurrency());
+  if (m_hardfork->get_current_version() >= RX_BLOCK_VERSION && seedhash != crypto::null_hash)
+  {
+    const crypto::hash tweaked_seed = apply_randomx_fork_tweak(seedhash, seed_height, get_randomx_tweak_height());
+    rx_set_main_seedhash(tweaked_seed.data, tools::get_max_concurrency());
+  }
 
   return true;
 }
@@ -5567,7 +5671,90 @@ bool Blockchain::get_hard_fork_voting_info(uint8_t version, uint32_t &window, ui
 
 uint64_t Blockchain::get_difficulty_target() const
 {
+  if (is_pow_fork_active(m_db->height()))
+    return ::config::POW_TARGET_BLOCK_TIME;
   return get_current_hard_fork_version() < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
+}
+
+uint64_t Blockchain::get_pow_fork_height() const
+{
+  switch (m_nettype)
+  {
+    case MAINNET: return ::config::POW_FORK_HEIGHT;
+    case TESTNET: return ::config::testnet::POW_FORK_HEIGHT;
+    case STAGENET: return ::config::stagenet::POW_FORK_HEIGHT;
+    default: return ::config::POW_FORK_HEIGHT;
+  }
+}
+
+uint64_t Blockchain::get_randomx_tweak_height() const
+{
+  switch (m_nettype)
+  {
+    case MAINNET: return ::config::RANDOMX_TWEAK_HEIGHT;
+    case TESTNET: return ::config::testnet::RANDOMX_TWEAK_HEIGHT;
+    case STAGENET: return ::config::stagenet::RANDOMX_TWEAK_HEIGHT;
+    default: return ::config::RANDOMX_TWEAK_HEIGHT;
+  }
+}
+
+difficulty_type Blockchain::get_pow_fork_reset_difficulty() const
+{
+  uint64_t value = ::config::POW_DIFFICULTY_RESET;
+  switch (m_nettype)
+  {
+    case MAINNET: value = ::config::POW_DIFFICULTY_RESET; break;
+    case TESTNET: value = ::config::testnet::POW_DIFFICULTY_RESET; break;
+    case STAGENET: value = ::config::stagenet::POW_DIFFICULTY_RESET; break;
+    default: break;
+  }
+  return difficulty_type(value);
+}
+
+bool Blockchain::is_pow_fork_active(uint64_t height) const
+{
+  const uint64_t fork_height = get_pow_fork_height();
+  return fork_height != 0 && height >= fork_height;
+}
+
+uint64_t Blockchain::get_pow_min_block_time() const
+{
+  switch (m_nettype)
+  {
+    case MAINNET: return ::config::POW_MIN_BLOCK_TIME;
+    case TESTNET: return ::config::testnet::POW_MIN_BLOCK_TIME;
+    case STAGENET: return ::config::stagenet::POW_MIN_BLOCK_TIME;
+    default: return ::config::POW_MIN_BLOCK_TIME;
+  }
+}
+
+void Blockchain::trim_pow_difficulty_inputs(std::vector<uint64_t> &timestamps, std::vector<difficulty_type> &difficulties, uint64_t height) const
+{
+  if (!is_pow_fork_active(height) || timestamps.empty())
+    return;
+
+  const uint64_t pow_height = get_pow_fork_height();
+  if (pow_height > 0)
+  {
+    const uint64_t min_height = pow_height > 0 ? pow_height - 1 : 0;
+    uint64_t first_height = 0;
+    if (height > timestamps.size())
+      first_height = height - timestamps.size();
+    if (min_height > first_height)
+    {
+      const uint64_t drop = std::min<uint64_t>(timestamps.size(), min_height - first_height);
+      timestamps.erase(timestamps.begin(), timestamps.begin() + drop);
+      difficulties.erase(difficulties.begin(), difficulties.begin() + drop);
+    }
+  }
+
+  const size_t max_window = ::config::POW_LWMA_WINDOW + 1;
+  if (timestamps.size() > max_window)
+  {
+    const auto remove = timestamps.size() - max_window;
+    timestamps.erase(timestamps.begin(), timestamps.begin() + remove);
+    difficulties.erase(difficulties.begin(), difficulties.begin() + remove);
+  }
 }
 
 std::map<uint64_t, std::tuple<uint64_t, uint64_t, uint64_t>> Blockchain:: get_output_histogram(const std::vector<uint64_t> &amounts, bool unlocked, uint64_t recent_cutoff, uint64_t min_count) const

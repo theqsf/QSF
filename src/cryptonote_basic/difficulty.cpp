@@ -170,6 +170,7 @@ namespace cryptonote {
 
   const difficulty_type max64bit(std::numeric_limits<std::uint64_t>::max());
   const boost::multiprecision::uint256_t max128bit(std::numeric_limits<boost::multiprecision::uint128_t>::max());
+  const difficulty_type max128bit_difficulty(std::numeric_limits<difficulty_type>::max());
   const boost::multiprecision::uint512_t max256bit(std::numeric_limits<boost::multiprecision::uint256_t>::max());
 
 #define FORCE_FULL_128_BITS
@@ -237,6 +238,53 @@ namespace cryptonote {
     if(res > max128bit)
       return 0; // to behave like previous implementation, may be better return max128bit?
     return res.convert_to<difficulty_type>();
+  }
+
+  difficulty_type next_difficulty_lwma(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
+    const size_t window = std::max<size_t>(2, ::config::POW_LWMA_WINDOW);
+
+    if (timestamps.size() <= 1 || cumulative_difficulties.size() <= 1)
+      return 1;
+
+    const size_t limit = std::min(window, timestamps.size() - 1);
+    const size_t offset = timestamps.size() - (limit + 1);
+
+    int64_t weighted_times = 0;
+    difficulty_type sum_work = 0;
+    uint64_t previous_timestamp = timestamps[offset];
+
+    const int64_t clamp = static_cast<int64_t>(target_seconds) * 6;
+
+    for (size_t i = 1; i <= limit; ++i)
+    {
+      const size_t idx = offset + i;
+      int64_t solvetime = static_cast<int64_t>(timestamps[idx]) - static_cast<int64_t>(previous_timestamp);
+      previous_timestamp = timestamps[idx];
+
+      if (solvetime > clamp)
+        solvetime = clamp;
+      if (solvetime < -clamp)
+        solvetime = -clamp;
+
+      weighted_times += solvetime * static_cast<int64_t>(i);
+
+      const difficulty_type work = cumulative_difficulties[idx] - cumulative_difficulties[idx - 1];
+      sum_work += work;
+    }
+
+    if (weighted_times <= 0)
+      weighted_times = 1;
+
+    boost::multiprecision::uint256_t next = boost::multiprecision::uint256_t(sum_work) * target_seconds * limit;
+    next = (next * (limit + 1)) / (2 * weighted_times);
+
+    if (next == 0)
+      return 1;
+
+    if (next > max128bit)
+      return max128bit_difficulty;
+
+    return next.convert_to<difficulty_type>();
   }
 
   std::string hex(difficulty_type v)
