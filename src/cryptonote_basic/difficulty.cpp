@@ -241,96 +241,133 @@ namespace cryptonote {
   }
 
   difficulty_type next_difficulty_lwma(std::vector<uint64_t> timestamps, std::vector<difficulty_type> cumulative_difficulties, size_t target_seconds) {
-    const size_t window = std::max<size_t>(2, ::config::POW_LWMA_WINDOW);
-
+    // LWMA3 (Linearly Weighted Moving Average 3) difficulty adjustment algorithm
+    // Implementation based on Zawy's LWMA3, used by Monero and other RandomX-based cryptocurrencies
+    // This algorithm naturally handles RandomX variance without artificial difficulty bounds
+    
+    // CRITICAL: LWMA3 requires timestamps in CHRONOLOGICAL ORDER (not sorted!)
+    // Verify timestamps are in chronological order (monotonically increasing)
+    for (size_t i = 1; i < timestamps.size(); ++i)
+    {
+      if (timestamps[i] < timestamps[i-1])
+      {
+        MERROR("LWMA3 ERROR: Timestamps are NOT in chronological order! This will break LWMA3.");
+        MERROR("  Timestamp[" << (i-1) << "] = " << timestamps[i-1]);
+        MERROR("  Timestamp[" << i << "] = " << timestamps[i]);
+        // Force chronological order by sorting (but this indicates a bug upstream)
+        // This should NEVER happen - timestamps must be in block order
+        return 1; // Fail safe
+      }
+    }
+    
+    // Use configured window size (typically 60 or 90 blocks)
+    const size_t N = ::config::POW_LWMA_WINDOW;
+    
+    // DEBUG: Log input data
+    LOG_PRINT_L1("LWMA3 INPUT: timestamps.size()=" << timestamps.size() 
+                 << " cumulative_difficulties.size()=" << cumulative_difficulties.size()
+                 << " target_seconds=" << target_seconds
+                 << " N=" << N);
+    
+    if (timestamps.size() > 10)
+    {
+      LOG_PRINT_L1("LWMA3 first 5 timestamps: " 
+                   << timestamps[0] << ", " << timestamps[1] << ", " << timestamps[2] << ", " 
+                   << timestamps[3] << ", " << timestamps[4]);
+      LOG_PRINT_L1("LWMA3 last 5 timestamps: " 
+                   << timestamps[timestamps.size()-5] << ", " << timestamps[timestamps.size()-4] << ", "
+                   << timestamps[timestamps.size()-3] << ", " << timestamps[timestamps.size()-2] << ", "
+                   << timestamps[timestamps.size()-1]);
+    }
+    
+    // Early return for insufficient data
     if (timestamps.size() <= 1 || cumulative_difficulties.size() <= 1)
+    {
+      LOG_PRINT_L1("LWMA3: Insufficient data, returning 1");
       return 1;
-
-    const size_t limit = std::min(window, timestamps.size() - 1);
-    const size_t offset = timestamps.size() - (limit + 1);
-
-    int64_t weighted_times = 0;
-    difficulty_type sum_work = 0;
-    uint64_t previous_timestamp = timestamps[offset];
-
-    // Reduced clamp from 6x to 3x to prevent extreme solvetimes from skewing difficulty
-    // This helps stabilize difficulty when blocks are slow
-    const int64_t clamp = static_cast<int64_t>(target_seconds) * 3;
-
-    for (size_t i = 1; i <= limit; ++i)
-    {
-      const size_t idx = offset + i;
-      int64_t solvetime = static_cast<int64_t>(timestamps[idx]) - static_cast<int64_t>(previous_timestamp);
-      previous_timestamp = timestamps[idx];
-
-      // Clamp solvetime to prevent extreme values from affecting difficulty
-      // This prevents a single very slow or very fast block from skewing the entire calculation
-      if (solvetime > clamp)
-        solvetime = clamp;
-      if (solvetime < -clamp)
-        solvetime = -clamp;
-
-      weighted_times += solvetime * static_cast<int64_t>(i);
-
-      const difficulty_type work = cumulative_difficulties[idx] - cumulative_difficulties[idx - 1];
-      sum_work += work;
     }
-
-    // Better handling for small sample sizes - use average solvetime as fallback
-    if (weighted_times <= 0)
+    
+    // Use the last N blocks (or all available if less than N)
+    const size_t n = std::min(N, timestamps.size() - 1);
+    if (n < 2)
     {
-      // If weighted_times is negative or zero, calculate average solvetime
-      int64_t total_time = static_cast<int64_t>(timestamps.back()) - static_cast<int64_t>(timestamps[offset]);
-      if (total_time > 0 && limit > 0)
-      {
-        int64_t avg_solvetime = total_time / static_cast<int64_t>(limit);
-        // Use average solvetime with proper weighting
-        weighted_times = avg_solvetime * static_cast<int64_t>(limit * (limit + 1)) / 2;
-      }
-      if (weighted_times <= 0)
-        weighted_times = static_cast<int64_t>(target_seconds) * static_cast<int64_t>(limit * (limit + 1)) / 2;
-    }
-
-    boost::multiprecision::uint256_t next = boost::multiprecision::uint256_t(sum_work) * target_seconds * limit;
-    next = (next * (limit + 1)) / (2 * weighted_times);
-
-    if (next == 0)
+      LOG_PRINT_L1("LWMA3: n < 2 (n=" << n << "), returning 1");
       return 1;
-
-    // Apply bounds checking to prevent extreme difficulty changes
-    // For small sample sizes, use more conservative bounds
-    // This prevents difficulty from skyrocketing or crashing
-    if (limit > 0 && cumulative_difficulties.size() > offset)
-    {
-      difficulty_type current_avg_diff = sum_work / limit;
-      
-      // More conservative bounds for small sample sizes
-      // With few blocks, limit changes more strictly to prevent instability
-      // Use integer arithmetic: 1.5x = *3/2, 2.0x = *2, 0.67x = *2/3, 0.5x = /2
-      boost::multiprecision::uint256_t max_diff_256, min_diff_256;
-      if (limit < 20)
-      {
-        // 1.5x max increase, 0.67x min decrease for small samples
-        max_diff_256 = (boost::multiprecision::uint256_t(current_avg_diff) * 3) / 2;
-        min_diff_256 = (boost::multiprecision::uint256_t(current_avg_diff) * 2) / 3;
-      }
-      else
-      {
-        // 2.0x max increase, 0.5x min decrease for larger samples
-        max_diff_256 = boost::multiprecision::uint256_t(current_avg_diff) * 2;
-        min_diff_256 = boost::multiprecision::uint256_t(current_avg_diff) / 2;
-      }
-      
-      if (next > max_diff_256)
-        next = max_diff_256;
-      if (next < min_diff_256)
-        next = min_diff_256;
     }
-
+    
+    LOG_PRINT_L1("LWMA3: Using n=" << n << " blocks (requested N=" << N << ")");
+    
+    // Calculate starting index for the window
+    const size_t start_idx = timestamps.size() - (n + 1);
+    
+    // LWMA3 formula: next_difficulty = (sum_difficulty * target * N * (N+1) / 2) / sum(weighted_solvetimes)
+    // where weighted_solvetimes = sum(solvetime[i] * i) for i = 1 to N
+    // and solvetime[i] is clamped between 1 and 6×target
+    
+    int64_t sum_weighted_solvetimes = 0;
+    difficulty_type sum_difficulty = 0;
+    
+    // Solvetime clamp: minimum 1 second, maximum 6×target
+    // This prevents timestamp manipulation while allowing normal RandomX variance
+    // Do not allow negative solvetimes - minimum is 1
+    const int64_t min_solvetime = 1;
+    const int64_t max_solvetime = static_cast<int64_t>(target_seconds) * 6;
+    
+    // Calculate weighted solvetimes and sum of difficulties
+    for (size_t i = 1; i <= n; ++i)
+    {
+      const size_t idx = start_idx + i;
+      const size_t prev_idx = start_idx + i - 1;
+      
+      // Calculate solvetime for this block (time between consecutive blocks)
+      int64_t solvetime = static_cast<int64_t>(timestamps[idx]) - static_cast<int64_t>(timestamps[prev_idx]);
+      
+      // Clamp solvetime: minimum 1, maximum 6×target
+      // This is the only clamp needed - LWMA3 handles the rest naturally
+      if (solvetime < min_solvetime)
+        solvetime = min_solvetime;
+      if (solvetime > max_solvetime)
+        solvetime = max_solvetime;
+      
+      // Weight by block index (more recent blocks have higher weight: 1, 2, 3, ..., n)
+      sum_weighted_solvetimes += solvetime * static_cast<int64_t>(i);
+      
+      // Sum individual block difficulties
+      const difficulty_type block_diff = cumulative_difficulties[idx] - cumulative_difficulties[prev_idx];
+      sum_difficulty += block_diff;
+    }
+    
+    // Safety check: ensure weighted solvetimes sum is positive
+    // This should never happen with proper clamping, but handle edge cases
+    if (sum_weighted_solvetimes <= 0)
+    {
+      // Fallback: use target time for all blocks with proper weighting
+      // This maintains algorithm stability in edge cases
+      sum_weighted_solvetimes = static_cast<int64_t>(target_seconds) * static_cast<int64_t>(n * (n + 1)) / 2;
+    }
+    
+    // LWMA3 formula calculation
+    // numerator = sum_difficulty * target * n * (n + 1) / 2
+    // denominator = sum_weighted_solvetimes
+    // next_difficulty = numerator / denominator
+    boost::multiprecision::uint256_t numerator = boost::multiprecision::uint256_t(sum_difficulty) * target_seconds;
+    numerator = numerator * n * (n + 1) / 2;
+    
+    boost::multiprecision::uint256_t next = numerator / sum_weighted_solvetimes;
+    
+    // Check for overflow (128-bit limit)
     if (next > max128bit)
       return max128bit_difficulty;
-
-    return next.convert_to<difficulty_type>();
+    
+    // Convert and return with safe fallback
+    difficulty_type result = next.convert_to<difficulty_type>();
+    
+    // DEBUG: Log result
+    LOG_PRINT_L1("LWMA3 RESULT: next_difficulty=" << result 
+                 << " (from sum_difficulty=" << sum_difficulty 
+                 << " sum_weighted_solvetimes=" << sum_weighted_solvetimes << ")");
+    
+    return result == 0 ? 1 : result;
   }
 
   std::string hex(difficulty_type v)

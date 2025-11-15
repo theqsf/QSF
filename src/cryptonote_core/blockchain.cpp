@@ -955,13 +955,17 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   if (pow_switch_block)
   {
     diff = get_pow_fork_reset_difficulty();
+    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=RESET diff=" << diff);
   }
   else if (pow_active)
   {
+    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LWMA3 timestamps.size()=" << timestamps.size() << " target=" << target);
     diff = next_difficulty_lwma(timestamps, difficulties, target);
+    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LWMA3 diff=" << diff);
   }
   else
   {
+    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LEGACY diff=" << diff);
     diff = next_difficulty(timestamps, difficulties, target);
   }
 
