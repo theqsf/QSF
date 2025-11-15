@@ -44,21 +44,6 @@
 #undef qsf_DEFAULT_LOG_CATEGORY
 #define qsf_DEFAULT_LOG_CATEGORY "difficulty"
 
-// ====================
-//  DEBUG LOGGING PATCH
-// ====================
-//
-// No Monero logging subsystem here, so we use std::cerr.
-// To disable difficulty logs, set DEBUG_DIFFICULTY to 0.
-// ====================
-
-#define DEBUG_DIFFICULTY 1
-
-#if DEBUG_DIFFICULTY
-#define DIFF_LOG(x) do { std::cerr << x << std::endl; } while (0)
-#else
-#define DIFF_LOG(x) do {} while (0)
-#endif
 
 namespace cryptonote {
 
@@ -267,7 +252,9 @@ namespace cryptonote {
 
   difficulty_type next_difficulty_lwma(std::vector<uint64_t> timestamps,
                                        std::vector<difficulty_type> cumulative_difficulties,
-                                       size_t target_seconds)
+                                       size_t target_seconds,
+                                       bool enable_hf18_features,
+                                       size_t lwma_window)
   {
     // LWMA3 requires CHRONOLOGICAL order (block order).
     // Verify timestamps are monotonically non-decreasing.
@@ -275,23 +262,17 @@ namespace cryptonote {
     {
       if (timestamps[i] < timestamps[i - 1])
       {
-        DIFF_LOG("LWMA3 ERROR: timestamps out of chronological order");
-        DIFF_LOG("  t[" << (i - 1) << "]=" << timestamps[i - 1]
-                        << " t[" << i << "]=" << timestamps[i]);
         return 1; // fail safe
       }
     }
 
-    const size_t N = ::config::POW_LWMA_WINDOW;
-
-    DIFF_LOG("LWMA3 INPUT: ts=" << timestamps.size()
-             << " cds=" << cumulative_difficulties.size()
-             << " target=" << target_seconds
-             << " N=" << N);
+    // Window size: Use provided window if given, otherwise use default
+    // Before HF18: always 90 (mainnet default)
+    // After HF18: 30 for testnet, 90 for mainnet/stagenet (passed from call site)
+    const size_t N = (lwma_window > 0) ? lwma_window : ::config::POW_LWMA_WINDOW;
 
     if (timestamps.size() <= 1 || cumulative_difficulties.size() <= 1)
     {
-      DIFF_LOG("LWMA3: insufficient data, returning 1");
       return 1;
     }
 
@@ -299,11 +280,8 @@ namespace cryptonote {
     const size_t n = std::min(N, timestamps.size() - 1);
     if (n < 2)
     {
-      DIFF_LOG("LWMA3: n < 2 returning 1 (n=" << n << ")");
       return 1;
     }
-
-    DIFF_LOG("LWMA3: using n=" << n << " out of N=" << N);
 
     const size_t start_idx = timestamps.size() - (n + 1);
 
@@ -334,7 +312,6 @@ namespace cryptonote {
 
     if (sum_weighted_solve <= 0)
     {
-      DIFF_LOG("LWMA3: non-positive sum_weighted_solve, using fallback");
       sum_weighted_solve =
         (int64_t)target_seconds * (int64_t)(n * (n + 1)) / 2;
     }
@@ -352,12 +329,8 @@ namespace cryptonote {
 
     difficulty_type result = next.convert_to<difficulty_type>();
 
-    DIFF_LOG("LWMA3 RESULT: " << result
-             << " sum_diff=" << sum_diff
-             << " sum_weighted=" << sum_weighted_solve);
-
     // ---------------------------------------------
-    // SAFETY CLAMP: Prevent difficulty from stalling
+    // HF18 SAFETY CLAMP: Prevent difficulty from stalling
     // ---------------------------------------------
     //
     // If the next difficulty is too high relative to the previous block's
@@ -366,7 +339,7 @@ namespace cryptonote {
     // This protects low-hashrate testnets & small mainnets from stalls
     // when a high-hash miner briefly joins, then leaves.
     //
-    if (!cumulative_difficulties.empty() && cumulative_difficulties.size() >= 2)
+    if (enable_hf18_features && !cumulative_difficulties.empty() && cumulative_difficulties.size() >= 2)
     {
       difficulty_type prev_diff =
           cumulative_difficulties.back() - cumulative_difficulties[cumulative_difficulties.size() - 2];
@@ -375,9 +348,6 @@ namespace cryptonote {
         difficulty_type min_allowed = prev_diff / 3;  // Allow difficulty to fall by 3×
         if (result < min_allowed)
         {
-          DIFF_LOG("LWMA3 CLAMP: next_difficulty " << result
-                  << " raised to min_allowed=" << min_allowed
-                  << " based on prev_diff=" << prev_diff);
           result = min_allowed;
         }
       }

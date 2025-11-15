@@ -104,6 +104,11 @@
 #define QSF_POW_LWMA_WINDOW_TESTNET                     30
 #define QSF_POW_LWMA_WINDOW                             QSF_POW_LWMA_WINDOW_MAINNET
 
+// Hard Fork 18 (HF18) - Difficulty Stability Upgrade
+#define QSF_HARDFORK_18_HEIGHT_MAINNET                  34000
+#define QSF_HARDFORK_18_HEIGHT_TESTNET                  61000
+#define QSF_HARDFORK_18_HEIGHT_STAGENET                 45000
+
 
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
 #define BLOCKS_IDS_SYNCHRONIZING_MAX_COUNT              25000  //max blocks ids count in synchronizing
@@ -326,6 +331,7 @@ namespace config
   constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
   constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
   constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
+  constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_MAINNET;
 
   // Multisig
   const uint32_t MULTISIG_MAX_SIGNERS{16};
@@ -354,6 +360,7 @@ namespace config
     constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
     constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW_TESTNET;
     constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
+    constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_TESTNET;
   }
 
   namespace stagenet
@@ -380,6 +387,7 @@ namespace config
     constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
     constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
     constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
+    constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_STAGENET;
   }
 }
 

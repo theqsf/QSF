@@ -389,6 +389,21 @@ bool Blockchain::init(BlockchainDB* db, const network_type nettype, bool offline
 #endif
 
   MINFO("Blockchain initialized. last block: " << m_db->height() - 1 << ", " << epee::misc_utils::get_time_interval_string(timestamp_diff) << " time ago, current difficulty: " << get_difficulty_for_next_block());
+  
+  // Log HF18 schedule
+  const uint64_t hf18_height = get_hf18_height();
+  if (hf18_height > 0)
+  {
+    const uint64_t current_height = m_db->height();
+    if (current_height < hf18_height)
+    {
+      MINFO("Hard Fork 18 scheduled at height " << hf18_height << " (Difficulty Stability Upgrade)");
+    }
+    else if (current_height == hf18_height)
+    {
+      MINFO("HF18 activated: new difficulty rules enabled");
+    }
+  }
 
   rtxn_guard.stop();
 
@@ -943,7 +958,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
     m_reset_timestamps_and_difficulties_height = true;
   }
 
-  if (pow_active)
+  if (pow_active && is_hf18_active(height))
   {
     trim_pow_difficulty_inputs(timestamps, difficulties, height);
   }
@@ -955,17 +970,25 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   if (pow_switch_block)
   {
     diff = get_pow_fork_reset_difficulty();
-    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=RESET diff=" << diff);
   }
   else if (pow_active)
   {
-    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LWMA3 timestamps.size()=" << timestamps.size() << " target=" << target);
-    diff = next_difficulty_lwma(timestamps, difficulties, target);
-    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LWMA3 diff=" << diff);
+    const bool hf18_active = is_hf18_active(height);
+    size_t lwma_window = ::config::POW_LWMA_WINDOW;
+    if (hf18_active)
+    {
+      switch (m_nettype)
+      {
+        case TESTNET: lwma_window = ::config::testnet::POW_LWMA_WINDOW; break;
+        case MAINNET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+        case STAGENET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+        default: lwma_window = ::config::POW_LWMA_WINDOW; break;
+      }
+    }
+    diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window);
   }
   else
   {
-    LOG_PRINT_L1("DIFF RESULT: height=" << height << " using=LEGACY diff=" << diff);
     diff = next_difficulty(timestamps, difficulties, target);
   }
 
@@ -1025,7 +1048,7 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   {
     const bool pow_active = pow_height != 0 && height >= pow_height;
     const bool pow_switch_block = pow_height != 0 && height == pow_height;
-    if (pow_active)
+    if (pow_active && is_hf18_active(height))
       trim_pow_difficulty_inputs(timestamps, difficulties, height);
     size_t target = get_ideal_hard_fork_version(height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
     if (pow_active)
@@ -1035,7 +1058,21 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
     if (pow_switch_block)
       recalculated_diff = get_pow_fork_reset_difficulty();
     else if (pow_active)
-      recalculated_diff = next_difficulty_lwma(timestamps, difficulties, target);
+    {
+      const bool hf18_active = is_hf18_active(height);
+      size_t lwma_window = ::config::POW_LWMA_WINDOW;
+      if (hf18_active)
+      {
+        switch (m_nettype)
+        {
+          case TESTNET: lwma_window = ::config::testnet::POW_LWMA_WINDOW; break;
+          case MAINNET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+          case STAGENET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+          default: lwma_window = ::config::POW_LWMA_WINDOW; break;
+        }
+      }
+      recalculated_diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window);
+    }
     else
       recalculated_diff = next_difficulty(timestamps, difficulties, target);
 
@@ -1345,7 +1382,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   const uint64_t pow_height = get_pow_fork_height();
   const bool pow_active = is_pow_fork_active(bei.height);
   const bool pow_switch_block = pow_height != 0 && bei.height == pow_height;
-  if (pow_active)
+  if (pow_active && is_hf18_active(bei.height))
   {
     trim_pow_difficulty_inputs(timestamps, cumulative_difficulties, bei.height);
   }
@@ -1356,7 +1393,21 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
     return get_pow_fork_reset_difficulty();
 
   if (pow_active)
-    return next_difficulty_lwma(timestamps, cumulative_difficulties, target);
+  {
+    const bool hf18_active = is_hf18_active(bei.height);
+    size_t lwma_window = ::config::POW_LWMA_WINDOW;
+    if (hf18_active)
+    {
+      switch (m_nettype)
+      {
+        case TESTNET: lwma_window = ::config::testnet::POW_LWMA_WINDOW; break;
+        case MAINNET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+        case STAGENET: lwma_window = ::config::POW_LWMA_WINDOW; break;
+        default: lwma_window = ::config::POW_LWMA_WINDOW; break;
+      }
+    }
+    return next_difficulty_lwma(timestamps, cumulative_difficulties, target, hf18_active, lwma_window);
+  }
 
   return next_difficulty(timestamps, cumulative_difficulties, target);
 }
@@ -4603,6 +4654,16 @@ leave:
       uint64_t long_term_block_weight = get_next_long_term_block_weight(block_weight);
       cryptonote::blobdata bd = cryptonote::block_to_blob(bl);
       new_height = m_db->add_block(std::make_pair(std::move(bl), std::move(bd)), block_weight, long_term_block_weight, cumulative_difficulty, already_generated_coins, txs);
+      
+      // Log HF18 activation
+      if (new_height > 0)
+      {
+        const uint64_t hf18_height = get_hf18_height();
+        if (hf18_height > 0 && new_height == hf18_height)
+        {
+          MINFO("HF18 activated: new difficulty rules enabled");
+        }
+      }
     }
     catch (const KEY_IMAGE_EXISTS& e)
     {
@@ -5700,6 +5761,23 @@ uint64_t Blockchain::get_randomx_tweak_height() const
     case STAGENET: return ::config::stagenet::RANDOMX_TWEAK_HEIGHT;
     default: return ::config::RANDOMX_TWEAK_HEIGHT;
   }
+}
+
+uint64_t Blockchain::get_hf18_height() const
+{
+  switch (m_nettype)
+  {
+    case MAINNET: return ::config::HARDFORK_18_HEIGHT;
+    case TESTNET: return ::config::testnet::HARDFORK_18_HEIGHT;
+    case STAGENET: return ::config::stagenet::HARDFORK_18_HEIGHT;
+    default: return ::config::HARDFORK_18_HEIGHT;
+  }
+}
+
+bool Blockchain::is_hf18_active(uint64_t height) const
+{
+  const uint64_t hf18_height = get_hf18_height();
+  return hf18_height != 0 && height >= hf18_height;
 }
 
 difficulty_type Blockchain::get_pow_fork_reset_difficulty() const

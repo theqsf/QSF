@@ -108,7 +108,9 @@ namespace cryptonote
     difficulty_type next_difficulty_lwma(
         std::vector<uint64_t> timestamps,
         std::vector<difficulty_type> cumulative_difficulties,
-        size_t target_seconds
+        size_t target_seconds,
+        bool enable_hf18_features = false,
+        size_t lwma_window = 0
     );
 
     //

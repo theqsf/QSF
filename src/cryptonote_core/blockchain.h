@@ -969,6 +969,8 @@ namespace cryptonote
     uint64_t get_difficulty_target() const;
     uint64_t get_pow_fork_height() const;
     uint64_t get_randomx_tweak_height() const;
+    uint64_t get_hf18_height() const;
+    bool is_hf18_active(uint64_t height) const;
 
     /**
      * @brief remove transactions from the transaction pool (if present)
