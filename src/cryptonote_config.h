@@ -100,7 +100,9 @@
 #define QSF_POW_FORK_DIFFICULTY_RESET                   ((uint64_t)1000000)
 #define QSF_POW_TARGET_BLOCK_TIME                       120
 #define QSF_POW_MIN_BLOCK_TIME                          60
-#define QSF_POW_LWMA_WINDOW                             90
+#define QSF_POW_LWMA_WINDOW_MAINNET                     90
+#define QSF_POW_LWMA_WINDOW_TESTNET                     30
+#define QSF_POW_LWMA_WINDOW                             QSF_POW_LWMA_WINDOW_MAINNET
 
 
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
@@ -350,7 +352,7 @@ namespace config
     constexpr uint64_t POW_DIFFICULTY_RESET = QSF_POW_FORK_DIFFICULTY_RESET;
     constexpr uint64_t POW_TARGET_BLOCK_TIME = QSF_POW_TARGET_BLOCK_TIME;
     constexpr uint64_t POW_MIN_BLOCK_TIME = QSF_POW_MIN_BLOCK_TIME;
-    constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
+    constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW_TESTNET;
     constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
   }
 

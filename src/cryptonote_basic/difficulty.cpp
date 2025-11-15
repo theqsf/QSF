@@ -356,6 +356,33 @@ namespace cryptonote {
              << " sum_diff=" << sum_diff
              << " sum_weighted=" << sum_weighted_solve);
 
+    // ---------------------------------------------
+    // SAFETY CLAMP: Prevent difficulty from stalling
+    // ---------------------------------------------
+    //
+    // If the next difficulty is too high relative to the previous block's
+    // difficulty, allow it to decay faster (up to 3× reduction).
+    //
+    // This protects low-hashrate testnets & small mainnets from stalls
+    // when a high-hash miner briefly joins, then leaves.
+    //
+    if (!cumulative_difficulties.empty() && cumulative_difficulties.size() >= 2)
+    {
+      difficulty_type prev_diff =
+          cumulative_difficulties.back() - cumulative_difficulties[cumulative_difficulties.size() - 2];
+      if (prev_diff > 0)
+      {
+        difficulty_type min_allowed = prev_diff / 3;  // Allow difficulty to fall by 3×
+        if (result < min_allowed)
+        {
+          DIFF_LOG("LWMA3 CLAMP: next_difficulty " << result
+                  << " raised to min_allowed=" << min_allowed
+                  << " based on prev_diff=" << prev_diff);
+          result = min_allowed;
+        }
+      }
+    }
+
     return result == 0 ? 1 : result;
   }
 
