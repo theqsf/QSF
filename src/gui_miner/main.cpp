@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
   
   // Set application properties
   app.setApplicationName("QSF Quantum-Safe Miner");
-  app.setApplicationVersion("2.1.2");
+  app.setApplicationVersion("3.0.2");
   app.setOrganizationName("QSF Coin Project");
   app.setOrganizationDomain("qsfcoin.com");
   
