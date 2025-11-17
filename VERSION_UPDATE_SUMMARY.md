@@ -1,5 +1,16 @@
 # Version Update Summary
 
+## ✅ v3.0.4.0-release Files Updated
+
+### Release Notes
+- ✅ `RELEASE_NOTES_v3.0.4.md` – Documented the “Network Recovery Release” scope, impact, and upgrade guidance.
+
+### Core Version Files
+- ✅ `src/version.cpp.in` – Bumped `DEF_QSF_VERSION` to `"3.0.4.0"` so tagged builds emit `3.0.4.0-release`.
+
+### Documentation
+- ✅ `VERSION_UPDATE_SUMMARY.md` – Recorded the 3.0.4.0-release version-only bump and verification steps.
+
 ## ✅ v3.0.0 Files Updated
 
 ### Release Notes
@@ -53,8 +64,8 @@ You may want to verify these files don't have hardcoded version numbers:
 
 1. **Tag the release in Git:**
    ```bash
-   git tag -a v2.1.2 -m "Release v2.1.2 - Security fix for signature forgery vulnerability"
-   git push origin v2.1.2
+   git tag -a v3.0.4.0-release -m "Release v3.0.4.0-release"
+   git push origin v3.0.4.0-release
    ```
 
 2. **Build for all platforms:**
@@ -66,7 +77,7 @@ You may want to verify these files don't have hardcoded version numbers:
    - Upload binaries for all platforms
    - Include SHA256 checksums
    - Include GPG signatures (if available)
-   - Link to RELEASE_NOTES_v2.1.2.md
+   - Link to `RELEASE_NOTES_v3.0.4.md`
 
 4. **Announce the release:**
    - Discord
@@ -76,9 +87,9 @@ You may want to verify these files don't have hardcoded version numbers:
 ## ✅ Version Number Consistency
 
 All version numbers are now consistent:
-- Core version: `2.1.2.0`
-- GUI version: `2.1.2`
-- Release notes: `v2.1.2`
+- Core version: `3.0.4.0`
+- Full version string: `3.0.4.0-release`
+- Release notes: `v3.0.4.0-release` (`RELEASE_NOTES_v3.0.4.md`)
 
 ## 🎯 Release Checklist
 
