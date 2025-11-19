@@ -492,11 +492,10 @@ private:
   // force a value so it can compile with 32-bit ARM
   constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 31;
 #else
-#if defined(ENABLE_AUTO_RESIZE)
-  constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 30;
-#else
-  constexpr static uint64_t DEFAULT_MAPSIZE = 1LL << 33;
-#endif
+  // Set default map size to 150GB (161061273600 bytes) to prevent sync stalls
+  // This matches the previously required manual config.json value
+  // Auto-resize will still handle future growth beyond this initial size
+  constexpr static uint64_t DEFAULT_MAPSIZE = 161061273600ULL;
 #endif
 
   constexpr static float RESIZE_PERCENT = 0.9f;

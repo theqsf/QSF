@@ -55,6 +55,31 @@ No changes were made to:
 
 This is a *pure recovery* release.
 
+### ✔ Automatic LMDB Map Size Fix
+
+**Important**: This release **automatically sets the LMDB map size to 150GB** during initialization, eliminating the need to manually create a `config.json` file.
+
+Previously, nodes would stall near blocks 31,004–31,670 due to LMDB map size limits. Users had to manually create:
+
+```
+~/.quantumsafefoundation/lmdb/config.json
+```
+
+With content:
+```json
+{
+  "lmdb": {
+    "map_size": 161061273600
+  }
+}
+```
+
+**v3.0.4 now sets this automatically** — no manual configuration required. The daemon will use a 150GB map size by default, with auto-resize handling future growth beyond this size.
+
+This is the same fix pattern used by Monero, Wownero, Loki, and other CryptoNote chains. LMDB requires explicit map sizing, and v3.0.4 now handles this automatically for new installs.
+
+**Existing users**: If you already created the `config.json` file, it will continue to work. New installations no longer require this manual step.
+
 ---
 
 ## ⚙️ Why This Update Was Necessary

@@ -3,13 +3,16 @@
 ## ✅ v3.0.4.0-release Files Updated
 
 ### Release Notes
-- ✅ `RELEASE_NOTES_v3.0.4.md` – Documented the “Network Recovery Release” scope, impact, and upgrade guidance.
+- ✅ `RELEASE_NOTES_v3.0.4.md` – Documented the “Network Recovery Release” scope, impact, automatic LMDB map size fix, and upgrade guidance.
 
 ### Core Version Files
 - ✅ `src/version.cpp.in` – Bumped `DEF_QSF_VERSION` to `"3.0.4.0"` so tagged builds emit `3.0.4.0-release`.
 
+### LMDB Fix
+- ✅ `src/blockchain_db/lmdb/db_lmdb.h` – Set `DEFAULT_MAPSIZE` to `161061273600ULL` (150GB) automatically, eliminating the need for manual `config.json` creation. This prevents sync stalls near blocks 31,004–31,670.
+
 ### Documentation
-- ✅ `VERSION_UPDATE_SUMMARY.md` – Recorded the 3.0.4.0-release version-only bump and verification steps.
+- ✅ `VERSION_UPDATE_SUMMARY.md` – Recorded the 3.0.4.0-release version bump, LMDB fix, and verification steps.
 
 ## ✅ v3.0.0 Files Updated
 
