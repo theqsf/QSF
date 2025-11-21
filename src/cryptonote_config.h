@@ -109,12 +109,12 @@
 #define QSF_HARDFORK_18_HEIGHT_TESTNET                  61000
 #define QSF_HARDFORK_18_HEIGHT_STAGENET                 45000
 
-// Difficulty Rescue (v3.0.6) - One-time rescue at height 31,671 + ongoing safety valve
-#define QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET            31671
-#define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET             ((uint64_t)0)         // 0 means derive from divisor (see below)
-#define QSF_DIFFICULTY_RESCUE_DIVISOR_MAINNET           16                    // Divide computed difficulty by 16 at rescue height
-#define QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME          14400                 // 4 hours in seconds (4 * 60 * 60)
-#define QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY      1000000               // Minimum difficulty floor
+// Difficulty Rescue (v3.0.8) - Apply directly at stuck block 31670
+#define QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET            31670
+#define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET             ((uint64_t)0)         // 0 => derive from divisor
+#define QSF_DIFFICULTY_RESCUE_DIVISOR_MAINNET           16                    // Divide computed difficulty by 16
+#define QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME          14400                 // 4 hours
+#define QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY      1000000               // floor
 
 
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
