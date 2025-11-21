@@ -109,6 +109,12 @@
 #define QSF_HARDFORK_18_HEIGHT_TESTNET                  61000
 #define QSF_HARDFORK_18_HEIGHT_STAGENET                 45000
 
+// Difficulty Rescue (v3.0.5) - One-time rescue at height 31,671 + ongoing safety valve
+#define QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET            31671
+#define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET             ((uint64_t)5000000000)  // 5 billion - reasonable for ~1-2 MH/s network
+#define QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME          14400  // 4 hours in seconds (4 * 60 * 60)
+#define QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY      1000000  // Minimum difficulty floor
+
 
 #define BLOCKS_IDS_SYNCHRONIZING_DEFAULT_COUNT          10000  //by default, blocks ids count in synchronizing
 #define BLOCKS_IDS_SYNCHRONIZING_MAX_COUNT              25000  //max blocks ids count in synchronizing
@@ -332,6 +338,10 @@ namespace config
   constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
   constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
   constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_MAINNET;
+  constexpr uint64_t DIFFICULTY_RESCUE_HEIGHT = QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET;
+  constexpr uint64_t DIFFICULTY_RESCUE_VALUE = QSF_DIFFICULTY_RESCUE_VALUE_MAINNET;
+  constexpr uint64_t DIFFICULTY_SAFETY_VALVE_STUCK_TIME = QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME;
+  constexpr uint64_t DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY = QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY;
 
   // Multisig
   const uint32_t MULTISIG_MAX_SIGNERS{16};
@@ -361,6 +371,10 @@ namespace config
     constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW_TESTNET;
     constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
     constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_TESTNET;
+    constexpr uint64_t DIFFICULTY_RESCUE_HEIGHT = 0;  // No rescue on testnet
+    constexpr uint64_t DIFFICULTY_RESCUE_VALUE = 0;
+    constexpr uint64_t DIFFICULTY_SAFETY_VALVE_STUCK_TIME = QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME;
+    constexpr uint64_t DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY = QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY;
   }
 
   namespace stagenet
@@ -388,6 +402,10 @@ namespace config
     constexpr size_t POW_LWMA_WINDOW = QSF_POW_LWMA_WINDOW;
     constexpr uint64_t RANDOMX_TWEAK_HEIGHT = POW_FORK_HEIGHT;
     constexpr uint64_t HARDFORK_18_HEIGHT = QSF_HARDFORK_18_HEIGHT_STAGENET;
+    constexpr uint64_t DIFFICULTY_RESCUE_HEIGHT = 0;  // No rescue on stagenet
+    constexpr uint64_t DIFFICULTY_RESCUE_VALUE = 0;
+    constexpr uint64_t DIFFICULTY_SAFETY_VALVE_STUCK_TIME = QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME;
+    constexpr uint64_t DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY = QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY;
   }
 }
 

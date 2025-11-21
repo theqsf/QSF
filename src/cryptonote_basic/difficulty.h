@@ -110,7 +110,9 @@ namespace cryptonote
         std::vector<difficulty_type> cumulative_difficulties,
         size_t target_seconds,
         bool enable_hf18_features = false,
-        size_t lwma_window = 0
+        size_t lwma_window = 0,
+        uint64_t height = 0,
+        uint8_t nettype = 0  // cryptonote::network_type, but using uint8_t to avoid circular dependency
     );
 
     //

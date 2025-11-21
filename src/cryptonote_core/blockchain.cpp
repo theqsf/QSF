@@ -967,7 +967,38 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
   difficulty_type diff = 0;
 
-  if (pow_switch_block)
+  // ==========================================================
+  // DIFFICULTY RESCUE (v3.0.5): One-time reset at height 31,671
+  // ==========================================================
+  // This is a consensus-critical change to unstick the chain at block 31,670.
+  // Only applies to mainnet at the specific rescue height.
+  uint64_t rescue_height = 0;
+  uint64_t rescue_value = 0;
+  switch (m_nettype)
+  {
+    case MAINNET:
+      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
+      break;
+    case TESTNET:
+      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
+      break;
+    case STAGENET:
+      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
+      break;
+    default:
+      break;
+  }
+
+  if (rescue_height > 0 && height == rescue_height)
+  {
+    diff = rescue_value;
+    MGINFO("DIFFICULTY RESCUE: Applying one-time difficulty reset at height " << height 
+          << " to " << rescue_value << " (mainnet rescue from stuck chain)");
+  }
+  else if (pow_switch_block)
   {
     diff = get_pow_fork_reset_difficulty();
   }
@@ -985,7 +1016,23 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
         default: lwma_window = ::config::POW_LWMA_WINDOW; break;
       }
     }
-    diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window);
+    difficulty_type calculated_diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window, height, m_nettype);
+    
+    // Check if safety valve was applied (difficulty was reduced)
+    // We can detect this by comparing with a normal calculation, but for simplicity,
+    // we'll log when difficulty seems unusually low relative to previous
+    if (height >= ::config::DIFFICULTY_RESCUE_HEIGHT && m_nettype == MAINNET && !difficulties.empty() && difficulties.size() >= 2)
+    {
+      difficulty_type prev_diff = difficulties.back() - difficulties[difficulties.size() - 2];
+      if (prev_diff > 0 && calculated_diff < prev_diff / 4)
+      {
+        MGINFO("DIFFICULTY SAFETY VALVE: Reduced difficulty at height " << height 
+              << " from " << (prev_diff * 4) << " to " << calculated_diff 
+              << " due to long average solve time");
+      }
+    }
+    
+    diff = calculated_diff;
   }
   else
   {
@@ -1071,7 +1118,7 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
           default: lwma_window = ::config::POW_LWMA_WINDOW; break;
         }
       }
-      recalculated_diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window);
+      recalculated_diff = next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window, height, m_nettype);
     }
     else
       recalculated_diff = next_difficulty(timestamps, difficulties, target);
@@ -1389,6 +1436,35 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   const size_t legacy_target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
   const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
 
+  // ==========================================================
+  // DIFFICULTY RESCUE (v3.0.5): One-time reset at height 31,671
+  // ==========================================================
+  // Same rescue logic as in get_difficulty_for_next_block()
+  uint64_t rescue_height = 0;
+  uint64_t rescue_value = 0;
+  switch (m_nettype)
+  {
+    case MAINNET:
+      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
+      break;
+    case TESTNET:
+      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
+      break;
+    case STAGENET:
+      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
+      break;
+    default:
+      break;
+  }
+
+  if (rescue_height > 0 && bei.height == rescue_height)
+  {
+    return rescue_value;
+  }
+
   if (pow_switch_block)
     return get_pow_fork_reset_difficulty();
 
@@ -1406,7 +1482,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
         default: lwma_window = ::config::POW_LWMA_WINDOW; break;
       }
     }
-    return next_difficulty_lwma(timestamps, cumulative_difficulties, target, hf18_active, lwma_window);
+    return next_difficulty_lwma(timestamps, cumulative_difficulties, target, hf18_active, lwma_window, bei.height, m_nettype);
   }
 
   return next_difficulty(timestamps, cumulative_difficulties, target);

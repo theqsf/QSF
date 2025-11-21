@@ -254,7 +254,9 @@ namespace cryptonote {
                                        std::vector<difficulty_type> cumulative_difficulties,
                                        size_t target_seconds,
                                        bool enable_hf18_features,
-                                       size_t lwma_window)
+                                       size_t lwma_window,
+                                       uint64_t height,
+                                       uint8_t nettype)
   {
     // LWMA3 requires CHRONOLOGICAL order (block order).
     // Verify timestamps are monotonically non-decreasing.
@@ -349,6 +351,71 @@ namespace cryptonote {
         if (result < min_allowed)
         {
           result = min_allowed;
+        }
+      }
+    }
+
+    // ==========================================================
+    // DIFFICULTY SAFETY VALVE (v3.0.5): Prevent stuck chains
+    // ==========================================================
+    // If average solve time over the difficulty window is much longer than target
+    // (indicating the chain is stuck), automatically reduce difficulty.
+    // This only applies after the rescue height (31,671) on mainnet.
+    //
+    if (nettype == 0 && height > 0 && height >= ::config::DIFFICULTY_RESCUE_HEIGHT && timestamps.size() >= 2)
+    {
+      const uint64_t rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      const uint64_t stuck_time_threshold = ::config::DIFFICULTY_SAFETY_VALVE_STUCK_TIME;
+      const uint64_t min_difficulty = ::config::DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY;
+
+      if (rescue_height > 0 && height >= rescue_height)
+      {
+        // Calculate average solve time over the last N blocks in the window
+        // If average is much longer than target, the chain is likely stuck
+        uint64_t total_time = 0;
+        uint64_t block_count = 0;
+        
+        // Use the same window size as LWMA calculation (n and start_idx are already calculated above)
+        const size_t check_window = std::min(n, timestamps.size() - 1);
+        for (size_t i = 1; i <= check_window; ++i)
+        {
+          const size_t idx = start_idx + i;
+          const size_t prev = start_idx + i - 1;
+          if (idx < timestamps.size() && prev < timestamps.size())
+          {
+            int64_t solvetime = (int64_t)timestamps[idx] - (int64_t)timestamps[prev];
+            if (solvetime > 0)
+            {
+              total_time += solvetime;
+              block_count++;
+            }
+          }
+        }
+        
+        if (block_count > 0)
+        {
+          uint64_t avg_solve_time = total_time / block_count;
+          
+          // If average solve time exceeds the stuck threshold, reduce difficulty
+          if (avg_solve_time > stuck_time_threshold)
+          {
+            // Reduce difficulty proportionally, but not below minimum
+            // Factor: target_time / avg_solve_time, but cap reduction at 4x
+            uint64_t reduction_factor = std::max((uint64_t)2, std::min((uint64_t)4, avg_solve_time / stuck_time_threshold));
+            difficulty_type reduced = result / reduction_factor;
+            
+            if (reduced < min_difficulty)
+            {
+              reduced = min_difficulty;
+            }
+            
+            // Only apply if the reduction is significant
+            if (reduced < result)
+            {
+              result = reduced;
+              // Logging will be done at the call site in blockchain.cpp
+            }
+          }
         }
       }
     }
