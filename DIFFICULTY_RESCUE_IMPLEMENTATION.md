@@ -12,21 +12,23 @@ This document summarizes the implementation of the difficulty rescue mechanism f
 
 ## Solution Components
 
-### 1. One-Time Difficulty Reset
+### 1. One-Time Difficulty Override
 
 **Location**: `src/cryptonote_core/blockchain.cpp`
 
 **Implementation**:
-- Check if `height == 31671` and `m_nettype == MAINNET`
-- If true, return fixed difficulty value: `5000000000` (5 billion)
+- After the base difficulty is calculated, check if `height == 31671` and `m_nettype == MAINNET`
+- If true, divide the computed difficulty by **16** (with a floor of 1) so block 31,671 is 16× easier
 - Applied in both:
   - `get_difficulty_for_next_block()`
   - `get_next_difficulty_for_alternative_chain()`
+  - `recalculate_difficulties()` (so database replays stay deterministic)
 
 **Constants** (in `src/cryptonote_config.h`):
 ```cpp
 #define QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET            31671
-#define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET            5000000000
+#define QSF_DIFFICULTY_RESCUE_DIVISOR_MAINNET           16
+#define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET             0   // 0 ⇒ use divisor
 ```
 
 ### 2. Ongoing Safety Valve
@@ -74,20 +76,19 @@ This document summarizes the implementation of the difficulty rescue mechanism f
    - Added safety valve logic after HF18 clamp
 
 4. **src/cryptonote_core/blockchain.cpp**
-   - Added rescue check in `get_difficulty_for_next_block()`
-   - Added rescue check in `get_next_difficulty_for_alternative_chain()`
+   - Added rescue scaling in `get_difficulty_for_next_block()`, `get_next_difficulty_for_alternative_chain()`, and `recalculate_difficulties()`
    - Updated all 3 call sites to pass height and network type
    - Added logging for rescue and safety valve activations
 
 5. **src/version.cpp.in**
-   - Updated version to 3.0.5.0
-   - Updated release name to "Difficulty Rescue"
+   - Updated version to 3.0.6.0
+   - Updated release name to "Difficulty Override"
 
 ## Function Call Flow
 
 ```
 get_difficulty_for_next_block()
-  ├─ Check rescue height (31671) → return rescue value if match
+  ├─ Check rescue height (31671) → rescale (or override) difficulty if match
   ├─ Check pow_switch_block → return reset difficulty
   └─ Call next_difficulty_lwma(timestamps, difficulties, target, hf18_active, lwma_window, height, m_nettype)
       ├─ Calculate normal LWMA difficulty
@@ -111,9 +112,9 @@ get_difficulty_for_next_block()
 
 **CRITICAL**: This is a consensus-breaking change.
 
-- Nodes running v3.0.4.0 or earlier will compute different difficulty for block 31,671
-- All nodes must upgrade to v3.0.5.0 to remain on the correct chain
-- The rescue is deterministic: all v3.0.5.0 nodes will compute the same difficulty
+- Nodes running v3.0.5.0 or earlier will compute different difficulty for block 31,671
+- All nodes must upgrade to v3.0.6.0 to remain on the correct chain
+- The rescue is deterministic: all v3.0.6.0 nodes will compute the same difficulty
 
 ## Logging
 
@@ -121,7 +122,7 @@ The implementation logs:
 
 1. **Rescue activation**:
    ```
-   DIFFICULTY RESCUE: Applying one-time difficulty reset at height 31671 to 5000000000 (mainnet rescue from stuck chain)
+   DIFFICULTY RESCUE: Scaling difficulty at height 31671 from <old> to <new> using divisor 16
    ```
 
 2. **Safety valve activation**:
@@ -131,10 +132,10 @@ The implementation logs:
 
 ## Design Decisions
 
-1. **Rescue value (5 billion)**: 
-   - Reasonable for ~1-2 MH/s network
-   - ~16× lower than current stuck difficulty
-   - Allows chain to resume quickly
+1. **Rescue divisor (16× reduction)**: 
+   - Directly scales the actual computed difficulty (≈7.868e10 → ≈4.92e9)
+   - Eliminates guesswork for a fixed constant
+   - Allows the chain to resume quickly without overshooting
 
 2. **Safety valve threshold (4 hours)**:
    - Long enough to avoid false positives from normal variance

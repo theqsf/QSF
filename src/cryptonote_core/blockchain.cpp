@@ -967,38 +967,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
   difficulty_type diff = 0;
 
-  // ==========================================================
-  // DIFFICULTY RESCUE (v3.0.5): One-time reset at height 31,671
-  // ==========================================================
-  // This is a consensus-critical change to unstick the chain at block 31,670.
-  // Only applies to mainnet at the specific rescue height.
-  uint64_t rescue_height = 0;
-  uint64_t rescue_value = 0;
-  switch (m_nettype)
-  {
-    case MAINNET:
-      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
-      break;
-    case TESTNET:
-      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
-      break;
-    case STAGENET:
-      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
-      break;
-    default:
-      break;
-  }
-
-  if (rescue_height > 0 && height == rescue_height)
-  {
-    diff = rescue_value;
-    MGINFO("DIFFICULTY RESCUE: Applying one-time difficulty reset at height " << height 
-          << " to " << rescue_value << " (mainnet rescue from stuck chain)");
-  }
-  else if (pow_switch_block)
+  if (pow_switch_block)
   {
     diff = get_pow_fork_reset_difficulty();
   }
@@ -1037,6 +1006,54 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   else
   {
     diff = next_difficulty(timestamps, difficulties, target);
+  }
+
+  // ==========================================================
+  // DIFFICULTY RESCUE (v3.0.6): One-time override at height 31,671
+  // ==========================================================
+  // Apply AFTER the base difficulty has been computed so we can scale it.
+  uint64_t rescue_height = 0;
+  uint64_t rescue_value = 0;
+  uint64_t rescue_divisor = 1;
+  switch (m_nettype)
+  {
+    case MAINNET:
+      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case TESTNET:
+      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::testnet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case STAGENET:
+      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::stagenet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    default:
+      break;
+  }
+
+  if (rescue_height > 0 && height == rescue_height)
+  {
+    if (rescue_value > 0)
+    {
+      diff = rescue_value;
+      MGINFO("DIFFICULTY RESCUE: Overriding difficulty at height " << height
+            << " to fixed value " << rescue_value << " (consensus rescue)");
+    }
+    else if (rescue_divisor > 1)
+    {
+      difficulty_type rescued = diff / rescue_divisor;
+      if (rescued == 0)
+        rescued = 1;
+      MGINFO("DIFFICULTY RESCUE: Scaling difficulty at height " << height
+            << " from " << diff << " to " << rescued
+            << " using divisor " << rescue_divisor);
+      diff = rescued;
+    }
   }
 
   CRITICAL_REGION_LOCAL1(m_difficulty_lock);
@@ -1091,6 +1108,29 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
   uint64_t drift_start_height = 0;
   std::vector<difficulty_type> new_cumulative_difficulties;
   const uint64_t pow_height = get_pow_fork_height();
+  uint64_t rescue_height = 0;
+  uint64_t rescue_value = 0;
+  uint64_t rescue_divisor = 1;
+  switch (m_nettype)
+  {
+    case MAINNET:
+      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case TESTNET:
+      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::testnet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case STAGENET:
+      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::stagenet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    default:
+      break;
+  }
   for (uint64_t height = start_height; height <= top_height; ++height)
   {
     const bool pow_active = pow_height != 0 && height >= pow_height;
@@ -1122,6 +1162,21 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
     }
     else
       recalculated_diff = next_difficulty(timestamps, difficulties, target);
+
+    if (rescue_height > 0 && height == rescue_height)
+    {
+      if (rescue_value > 0)
+      {
+        recalculated_diff = rescue_value;
+      }
+      else if (rescue_divisor > 1)
+      {
+        difficulty_type rescued = recalculated_diff / rescue_divisor;
+        if (rescued == 0)
+          rescued = 1;
+        recalculated_diff = rescued;
+      }
+    }
 
     boost::multiprecision::uint256_t recalculated_cum_diff_256 = boost::multiprecision::uint256_t(recalculated_diff) + last_cum_diff;
     CHECK_AND_ASSERT_THROW_MES(recalculated_cum_diff_256 <= std::numeric_limits<difficulty_type>::max(), "Difficulty overflow!");
@@ -1436,37 +1491,10 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   const size_t legacy_target = get_ideal_hard_fork_version(bei.height) < 2 ? DIFFICULTY_TARGET_V1 : DIFFICULTY_TARGET_V2;
   const size_t target = pow_active ? ::config::POW_TARGET_BLOCK_TIME : legacy_target;
 
-  // ==========================================================
-  // DIFFICULTY RESCUE (v3.0.5): One-time reset at height 31,671
-  // ==========================================================
-  // Same rescue logic as in get_difficulty_for_next_block()
-  uint64_t rescue_height = 0;
-  uint64_t rescue_value = 0;
-  switch (m_nettype)
-  {
-    case MAINNET:
-      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
-      break;
-    case TESTNET:
-      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
-      break;
-    case STAGENET:
-      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
-      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
-      break;
-    default:
-      break;
-  }
-
-  if (rescue_height > 0 && bei.height == rescue_height)
-  {
-    return rescue_value;
-  }
-
   if (pow_switch_block)
     return get_pow_fork_reset_difficulty();
+
+  difficulty_type diff = 0;
 
   if (pow_active)
   {
@@ -1482,10 +1510,54 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
         default: lwma_window = ::config::POW_LWMA_WINDOW; break;
       }
     }
-    return next_difficulty_lwma(timestamps, cumulative_difficulties, target, hf18_active, lwma_window, bei.height, m_nettype);
+    diff = next_difficulty_lwma(timestamps, cumulative_difficulties, target, hf18_active, lwma_window, bei.height, m_nettype);
+  }
+  else
+  {
+    diff = next_difficulty(timestamps, cumulative_difficulties, target);
   }
 
-  return next_difficulty(timestamps, cumulative_difficulties, target);
+  // ==========================================================
+  // DIFFICULTY RESCUE (v3.0.6): One-time override at rescue height
+  // ==========================================================
+  uint64_t rescue_height = 0;
+  uint64_t rescue_value = 0;
+  uint64_t rescue_divisor = 1;
+  switch (m_nettype)
+  {
+    case MAINNET:
+      rescue_height = ::config::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case TESTNET:
+      rescue_height = ::config::testnet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::testnet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::testnet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    case STAGENET:
+      rescue_height = ::config::stagenet::DIFFICULTY_RESCUE_HEIGHT;
+      rescue_value = ::config::stagenet::DIFFICULTY_RESCUE_VALUE;
+      rescue_divisor = ::config::stagenet::DIFFICULTY_RESCUE_DIVISOR;
+      break;
+    default:
+      break;
+  }
+
+  if (rescue_height > 0 && bei.height == rescue_height)
+  {
+    if (rescue_value > 0)
+      return rescue_value;
+    if (rescue_divisor > 1)
+    {
+      difficulty_type rescued = diff / rescue_divisor;
+      if (rescued == 0)
+        rescued = 1;
+      return rescued;
+    }
+  }
+
+  return diff;
 }
 //------------------------------------------------------------------
 // This function does a sanity check on basic things that all miner
