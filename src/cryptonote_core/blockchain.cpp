@@ -1009,9 +1009,10 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
   }
 
   // ==========================================================
-  // DIFFICULTY RESCUE (v3.0.6): One-time override at height 31,671
+  // DIFFICULTY RESCUE (v3.0.7): Override from height 31,671 onwards
   // ==========================================================
   // Apply AFTER the base difficulty has been computed so we can scale it.
+  // Changed from == to >= to ensure rescue activates immediately when stuck.
   uint64_t rescue_height = 0;
   uint64_t rescue_value = 0;
   uint64_t rescue_divisor = 1;
@@ -1036,7 +1037,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
       break;
   }
 
-  if (rescue_height > 0 && height == rescue_height)
+  if (rescue_height > 0 && height >= rescue_height)
   {
     if (rescue_value > 0)
     {
@@ -1051,7 +1052,7 @@ difficulty_type Blockchain::get_difficulty_for_next_block()
         rescued = 1;
       MGINFO("DIFFICULTY RESCUE: Scaling difficulty at height " << height
             << " from " << diff << " to " << rescued
-            << " using divisor " << rescue_divisor);
+            << " using divisor " << rescue_divisor << " (applying to all blocks >= " << rescue_height << ")");
       diff = rescued;
     }
   }
@@ -1163,7 +1164,7 @@ size_t Blockchain::recalculate_difficulties(boost::optional<uint64_t> start_heig
     else
       recalculated_diff = next_difficulty(timestamps, difficulties, target);
 
-    if (rescue_height > 0 && height == rescue_height)
+    if (rescue_height > 0 && height >= rescue_height)
     {
       if (rescue_value > 0)
       {
@@ -1518,7 +1519,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
   }
 
   // ==========================================================
-  // DIFFICULTY RESCUE (v3.0.6): One-time override at rescue height
+  // DIFFICULTY RESCUE (v3.0.7): Override from rescue height onwards
   // ==========================================================
   uint64_t rescue_height = 0;
   uint64_t rescue_value = 0;
@@ -1544,7 +1545,7 @@ difficulty_type Blockchain::get_next_difficulty_for_alternative_chain(const std:
       break;
   }
 
-  if (rescue_height > 0 && bei.height == rescue_height)
+  if (rescue_height > 0 && bei.height >= rescue_height)
   {
     if (rescue_value > 0)
       return rescue_value;
