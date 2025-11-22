@@ -109,10 +109,10 @@
 #define QSF_HARDFORK_18_HEIGHT_TESTNET                  61000
 #define QSF_HARDFORK_18_HEIGHT_STAGENET                 45000
 
-// Difficulty Rescue (v3.0.8) - Apply directly at stuck block 31670
+// Difficulty Rescue (v3.0.9) - Apply directly at stuck block 31670
 #define QSF_DIFFICULTY_RESCUE_HEIGHT_MAINNET            31670
 #define QSF_DIFFICULTY_RESCUE_VALUE_MAINNET             ((uint64_t)0)         // 0 => derive from divisor
-#define QSF_DIFFICULTY_RESCUE_DIVISOR_MAINNET           16                    // Divide computed difficulty by 16
+#define QSF_DIFFICULTY_RESCUE_DIVISOR_MAINNET           64                    // Divide computed difficulty by 64
 #define QSF_DIFFICULTY_SAFETY_VALVE_STUCK_TIME          14400                 // 4 hours
 #define QSF_DIFFICULTY_SAFETY_VALVE_MIN_DIFFICULTY      1000000               // floor
 
